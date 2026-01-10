@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform, Modal } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Modal, Platform } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,58 +13,61 @@ const THEME = {
   border: '#E0E0E0'
 };
 
-// 1. 模擬人員管理資料庫 (之後可從 Context 讀取)
 const PERSONNEL_DB = [
   { id: '1', name: '吳資彬' },
   { id: '2', name: '現場工程師' },
-  { id: '3', name: '陳大文' }, // 新增模擬人員
+  { id: '3', name: '陳大文' },
 ];
 
 export default function NewProjectScreen() {
   const router = useRouter();
 
+  // 表單資料
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [manager, setManager] = useState('');
   const [status, setStatus] = useState('未開工');
-  const [progress, setProgress] = useState('0');
   
-  // 日期欄位
-  const [startDate, setStartDate] = useState('');
+  // 日期資料
+  const [bidDate, setBidDate] = useState('');       // 決標日期
+  const [startDate, setStartDate] = useState('');     // 開工日期
   const [contractDays, setContractDays] = useState('');
   const [type, setType] = useState('日曆天');
   
-  // 新增的欄位
-  const [actualEndDate, setActualEndDate] = useState('');
-  const [inspectDate, setInspectDate] = useState('');
+  const [actualEndDate, setActualEndDate] = useState(''); // 實際竣工
+  const [inspectDate, setInspectDate] = useState('');     // 驗收日期
   const [reInspectDate, setReInspectDate] = useState(''); // 複驗日期
   const [qualifiedDate, setQualifiedDate] = useState(''); // 驗收合格日
 
-  // 月曆 Modal 控制
+  // --- 日曆相關狀態 ---
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [currentDateField, setCurrentDateField] = useState(''); // 紀錄現在正在選哪個欄位
+  const [currentDateField, setCurrentDateField] = useState('');
+  const [displayDate, setDisplayDate] = useState(new Date()); // 控制日曆目前顯示的年月
 
   const statusOptions = ['未開工', '已開工未進場', '施工中', '完工待驗收', '驗收中', '結案'];
   const typeOptions = ['日曆天', '工作天'];
 
-  const handleSave = () => {
-    if (!name || !manager) {
-      alert('請填寫專案名稱與工地主任');
-      return;
-    }
-    router.back();
-  };
-
-  // 開啟月曆
-  const openCalendar = (fieldSetterName: string) => {
-    setCurrentDateField(fieldSetterName);
+  // 開啟日曆
+  const openCalendar = (fieldName: string) => {
+    setCurrentDateField(fieldName);
+    setDisplayDate(new Date()); // 每次打開都回到今天，或可改成回到該欄位已選的日期
     setCalendarVisible(true);
   };
 
-  // 處理日期選擇
-  const handleDateSelect = (day: number) => {
-    const formattedDate = `2026/01/${day < 10 ? '0' + day : day}`; // 簡易模擬
+  // 日曆邏輯：切換月份
+  const changeMonth = (offset: number) => {
+    const newDate = new Date(displayDate);
+    newDate.setMonth(newDate.getMonth() + offset);
+    setDisplayDate(newDate);
+  };
+
+  // 日曆邏輯：點選日期
+  const selectDate = (day: number) => {
+    const year = displayDate.getFullYear();
+    const month = displayDate.getMonth() + 1;
+    const formattedDate = `${year}/${month < 10 ? '0' + month : month}/${day < 10 ? '0' + day : day}`;
     
+    if (currentDateField === 'bidDate') setBidDate(formattedDate);
     if (currentDateField === 'startDate') setStartDate(formattedDate);
     if (currentDateField === 'actualEndDate') setActualEndDate(formattedDate);
     if (currentDateField === 'inspectDate') setInspectDate(formattedDate);
@@ -74,7 +77,37 @@ export default function NewProjectScreen() {
     setCalendarVisible(false);
   };
 
-  // 自製簡易日期選擇器 (Date Input Component)
+  const handleSave = () => {
+    if (!name || !manager) {
+      alert('請填寫專案名稱與工地主任');
+      return;
+    }
+    router.back();
+  };
+
+  // 生成日曆格子
+  const renderCalendarDays = () => {
+    const year = displayDate.getFullYear();
+    const month = displayDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay(); // 0 是週日
+
+    const days = [];
+    // 空白格子 (補齊第一週前面的空位)
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<View key={`empty-${i}`} style={styles.dayCellEmpty} />);
+    }
+    // 日期格子
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(
+        <TouchableOpacity key={i} style={styles.dayCell} onPress={() => selectDate(i)}>
+          <Text style={styles.dayText}>{i}</Text>
+        </TouchableOpacity>
+      );
+    }
+    return days;
+  };
+
   const DateInput = ({ label, value, fieldName, required = false }: any) => (
     <View style={styles.halfField}>
       <Text style={styles.label}>{label} {required && '*'}</Text>
@@ -96,7 +129,6 @@ export default function NewProjectScreen() {
       <Stack.Screen options={{ title: '新增專案', headerStyle: { backgroundColor: THEME.headerBg }, headerTintColor: '#fff', headerShown: true }} />
 
       <ScrollView contentContainerStyle={styles.form}>
-        
         {/* 基本資料 */}
         <View style={styles.card}>
           <SectionHeader title="基本資料" />
@@ -109,15 +141,10 @@ export default function NewProjectScreen() {
             <TextInput style={styles.input} placeholder="例如：台中市西屯區..." value={address} onChangeText={setAddress} />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>工地主任 * (已連動人員名單)</Text>
+            <Text style={styles.label}>工地主任 *</Text>
             <View style={styles.chipContainer}>
-              {/* 2. 這裡改成從 PERSONNEL_DB 讀取資料 */}
               {PERSONNEL_DB.map((p) => (
-                <TouchableOpacity 
-                  key={p.id} 
-                  style={[styles.chip, manager === p.name && styles.chipSelected]}
-                  onPress={() => setManager(p.name)}
-                >
+                <TouchableOpacity key={p.id} style={[styles.chip, manager === p.name && styles.chipSelected]} onPress={() => setManager(p.name)}>
                   <Text style={[styles.chipText, manager === p.name && styles.chipTextSelected]}>{p.name}</Text>
                 </TouchableOpacity>
               ))}
@@ -125,9 +152,9 @@ export default function NewProjectScreen() {
           </View>
         </View>
 
-        {/* 狀態與進度 */}
+        {/* 狀態 (已移除進度 %) */}
         <View style={styles.card}>
-          <SectionHeader title="狀態與進度" />
+          <SectionHeader title="狀態" />
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>施工狀態</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
@@ -138,20 +165,13 @@ export default function NewProjectScreen() {
               ))}
             </ScrollView>
           </View>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>目前進度 (%)</Text>
-            <TextInput style={styles.input} keyboardType="numeric" value={progress} onChangeText={setProgress} />
-          </View>
         </View>
 
         {/* 契約與工期 */}
         <View style={styles.card}>
           <SectionHeader title="契約與工期" />
           <View style={styles.row}>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>決標日期</Text>
-              <TextInput style={styles.input} placeholder="文字輸入" />
-            </View>
+            <DateInput label="決標日期" value={bidDate} fieldName="bidDate" />
             <DateInput label="開工日期" value={startDate} fieldName="startDate" required />
           </View>
           <View style={styles.row}>
@@ -172,7 +192,7 @@ export default function NewProjectScreen() {
           </View>
         </View>
 
-        {/* 驗收結束 (補齊欄位) */}
+        {/* 驗收結束 */}
         <View style={styles.card}>
           <SectionHeader title="驗收結束 (選填)" />
           <View style={styles.row}>
@@ -190,20 +210,35 @@ export default function NewProjectScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* --- 簡易月曆 Modal --- */}
-      <Modal visible={calendarVisible} transparent animationType="fade">
-        <View style={styles.modalCenter}>
-          <View style={styles.calendarCard}>
-            <Text style={styles.calendarTitle}>選擇日期 (2026/01)</Text>
-            <View style={styles.calendarGrid}>
-              {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                <TouchableOpacity key={day} style={styles.dayCell} onPress={() => handleDateSelect(day)}>
-                  <Text style={styles.dayText}>{day}</Text>
-                </TouchableOpacity>
-              ))}
+      {/* --- 標準月曆 Modal --- */}
+      <Modal visible={calendarVisible} transparent animationType="fade" onRequestClose={() => setCalendarVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.calendarContainer}>
+            {/* Header: 年月切換 */}
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.monthBtn}>
+                <Ionicons name="chevron-back" size={24} color="#333" />
+              </TouchableOpacity>
+              <Text style={styles.monthTitle}>
+                {displayDate.getFullYear()}年 {displayDate.getMonth() + 1}月
+              </Text>
+              <TouchableOpacity onPress={() => changeMonth(1)} style={styles.monthBtn}>
+                <Ionicons name="chevron-forward" size={24} color="#333" />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setCalendarVisible(false)}>
-              <Text style={styles.closeText}>取消</Text>
+
+            {/* 週標題 */}
+            <View style={styles.weekHeader}>
+              {['日','一','二','三','四','五','六'].map(d => <Text key={d} style={styles.weekText}>{d}</Text>)}
+            </View>
+
+            {/* 日期格子 */}
+            <View style={styles.daysGrid}>
+              {renderCalendarDays()}
+            </View>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setCalendarVisible(false)}>
+              <Text style={{color: '#666'}}>取消</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -235,12 +270,16 @@ const styles = StyleSheet.create({
   submitBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   
   // Calendar Styles
-  modalCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-  calendarCard: { width: '85%', backgroundColor: '#fff', padding: 20, borderRadius: 12 },
-  calendarTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center', color: THEME.headerBg },
-  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  dayCell: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#eee', borderRadius: 20 },
-  dayText: { fontSize: 16 },
-  closeBtn: { marginTop: 20, padding: 10, alignItems: 'center' },
-  closeText: { color: 'red', fontSize: 16 }
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  calendarContainer: { width: '90%', backgroundColor: '#fff', borderRadius: 12, padding: 20 },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  monthTitle: { fontSize: 18, fontWeight: 'bold', color: THEME.headerBg },
+  monthBtn: { padding: 5 },
+  weekHeader: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 10 },
+  weekText: { width: 40, textAlign: 'center', color: '#999', fontWeight: 'bold' },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' }, // 改為 flex-start 讓排版更穩
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
+  dayCellEmpty: { width: '14.28%', aspectRatio: 1 },
+  dayText: { fontSize: 16, color: '#333' },
+  cancelBtn: { marginTop: 20, alignItems: 'center', padding: 10 }
 });
