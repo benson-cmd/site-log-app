@@ -1,26 +1,31 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { useUser } from '../context/UserContext'; // 確保引用正確
+import { useUser } from '../context/UserContext'; 
 
+// --- 1. 改回明亮色系主題 ---
 const THEME = {
-  primary: '#C69C6D',
-  background: '#121212',
-  card: '#1E1E1E',
-  text: '#ffffff',
-  textSec: '#999999',
-  border: '#333333'
+  primary: '#C69C6D',       // 金色按鈕
+  background: '#ffffff',    // 白底 (關鍵修改)
+  card: '#ffffff',          // 卡片也是白的
+  text: '#002147',          // 深藍色字體
+  textSec: '#666666',       // 灰色副標
+  inputBg: '#F5F5F5',       // 淺灰輸入框背景
+  border: '#E0E0E0'         // 淺灰邊框
 };
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login } = useUser(); // 使用全域登入狀態
+  const { login } = useUser();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
-    // 1. 簡單驗證
+    // 2. 加入除錯檢查
+    console.log('輸入的帳號:', email);
+    console.log('輸入的密碼:', password);
+
     if (!email || !password) {
       if (Platform.OS === 'web') {
         alert('請輸入帳號與密碼');
@@ -30,89 +35,108 @@ export default function LoginScreen() {
       return;
     }
 
-    // 2. 為了測試方便，只要是 admin 就放行，或者您可以加上 console.log 檢查
-    console.log('嘗試登入:', email, password);
-
-    // 這裡模擬登入成功
-    if (email === 'admin' && password === 'admin') {
-      // 呼叫 Context 的 login (如果有的話)，或是直接導航
-      // await login(email); 
-      
-      // 3. 導航到專案列表
+    // 3. 萬用登入邏輯 (包含 admin)
+    if ((email === 'admin' && password === 'admin') || (email && password)) {
+      // 這裡您可以選擇是否要呼叫 login(email)，目前先直接跳轉
       router.replace('/projects');
     } else {
-      // 暫時允許任何帳號登入以便測試 (除了空的)
-      router.replace('/projects');
-      
-      // 如果要嚴格一點：
-      // alert('帳號或密碼錯誤 (測試請用 admin/admin)');
+      alert('登入失敗');
     }
   };
 
   const handleRegister = () => {
-    // 導向註冊頁面
     router.push('/register');
   };
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-      <View style={styles.logoArea}>
-        {/* 如果沒有 logo 圖片，可以先用文字代替，或確保路徑正確 */}
-        {/* <Image source={require('../assets/logo.png')} style={styles.logo} resizeMode="contain" /> */}
-        <Text style={styles.logoText}>DW工程日誌系統</Text>
-      </View>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        
+        <View style={styles.logoArea}>
+          <Text style={styles.logoText}>DW工程日誌系統</Text>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>帳號 (Email)</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="admin" 
-          placeholderTextColor="#666"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-        />
+        <View style={styles.card}>
+          <Text style={styles.label}>帳號 (Email)</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="請輸入帳號 (admin)" 
+            placeholderTextColor="#999"
+            value={email}
+            onChangeText={setEmail} // 確保這裡綁定正確
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
 
-        <Text style={styles.label}>密碼</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="admin" 
-          placeholderTextColor="#666"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+          <Text style={styles.label}>密碼</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="請輸入密碼 (admin)" 
+            placeholderTextColor="#999"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
 
-        <TouchableOpacity style={styles.btn} onPress={handleLogin}>
-          <Text style={styles.btnText}>登入系統</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.btn} onPress={handleLogin}>
+            <Text style={styles.btnText}>登入系統</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => alert('請聯絡管理員重設密碼')}>
-          <Text style={styles.forgot}>忘記密碼？</Text>
-        </TouchableOpacity>
+          <TouchableOpacity onPress={() => alert('請聯絡管理員重設密碼')}>
+            <Text style={styles.forgot}>忘記密碼？</Text>
+          </TouchableOpacity>
 
-        <View style={styles.divider} />
+          <View style={styles.divider} />
 
-        {/* 修正：這裡只保留一個註冊按鈕 */}
-        <TouchableOpacity onPress={handleRegister} style={styles.registerContainer}>
-          <Text style={styles.registerText}>沒有帳號？申請註冊</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity onPress={handleRegister} style={styles.registerContainer}>
+            <Text style={styles.registerText}>沒有帳號？申請註冊</Text>
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.background, justifyContent: 'center', padding: 20 },
+  container: { flex: 1, backgroundColor: THEME.background },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+  
   logoArea: { alignItems: 'center', marginBottom: 40 },
-  logoText: { fontSize: 32, fontWeight: 'bold', color: '#002147', marginTop: 10 }, // 配合您的截圖顏色
-  card: { backgroundColor: '#fff', padding: 30, borderRadius: 16, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
-  label: { fontWeight: 'bold', marginBottom: 8, color: '#333' },
-  input: { backgroundColor: '#F5F5F5', padding: 15, borderRadius: 8, marginBottom: 20, fontSize: 16, borderWidth: 1, borderColor: '#E0E0E0' },
+  logoText: { fontSize: 32, fontWeight: 'bold', color: THEME.text, marginTop: 10 },
+  
+  card: { 
+    backgroundColor: THEME.card, 
+    padding: 30, 
+    borderRadius: 16, 
+    // 增加陰影讓白底卡片在白背景上浮起來
+    shadowColor: '#000', 
+    shadowOpacity: 0.1, 
+    shadowRadius: 10, 
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#f0f0f0'
+  },
+  
+  label: { fontWeight: 'bold', marginBottom: 8, color: '#333', fontSize: 16 },
+  
+  // 修正輸入框樣式，確保文字是黑色的
+  input: { 
+    backgroundColor: THEME.inputBg, 
+    padding: 15, 
+    borderRadius: 8, 
+    marginBottom: 20, 
+    fontSize: 16, 
+    borderWidth: 1, 
+    borderColor: THEME.border,
+    color: '#000000' // 強制文字黑色
+  },
+  
   btn: { backgroundColor: THEME.primary, padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   forgot: { color: '#666', textAlign: 'center', marginTop: 15, textDecorationLine: 'underline' },
   divider: { height: 1, backgroundColor: '#eee', marginVertical: 20 },
   registerContainer: { alignItems: 'center' },
-  registerText: { color: '#002147', fontWeight: 'bold', fontSize: 16 }
+  registerText: { color: THEME.text, fontWeight: 'bold', fontSize: 16 }
 });
