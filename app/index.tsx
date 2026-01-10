@@ -28,7 +28,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     setTimeout(async () => {
-      // 模擬登入成功
+      // 模擬登入
       if ((email === 'admin' && password === 'admin') || (email && password)) {
         await login(email, password); 
         router.replace('/projects');
@@ -43,9 +43,8 @@ export default function LoginScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* 1. Logo 區域：改回使用圖片 */}
         <View style={styles.logoArea}>
-          {/* 請確保 assets 資料夾內有 logo.png，如果檔名不同請自行修改 */}
+          {/* Logo 放大至 width: 180 */}
           <Image 
             source={require('../assets/logo.png')} 
             style={styles.logoImage}
@@ -99,8 +98,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.background },
   scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
   logoArea: { alignItems: 'center', marginBottom: 40 },
-  // 設定 Logo 圖片大小
-  logoImage: { width: 120, height: 120, marginBottom: 15 },
+  // 修改這裡：加大 Logo
+  logoImage: { width: 180, height: 180, marginBottom: 15 },
   logoText: { fontSize: 32, fontWeight: 'bold', color: THEME.text },
   card: { 
     backgroundColor: THEME.card, padding: 30, borderRadius: 16, 
