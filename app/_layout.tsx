@@ -1,16 +1,18 @@
 import { Stack } from 'expo-router';
 import { UserProvider } from '../context/UserContext';
 
-// 簡化版 Layout，將跳轉控制權交給各個頁面，避免邏輯衝突
+// 20260114-FINAL-STABLE
 export default function RootLayout() {
   return (
     <UserProvider>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="projects" />
-        <Stack.Screen name="sop" />
-        <Stack.Screen name="personnel" />
-        <Stack.Screen name="register" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="dashboard/index" />
+        <Stack.Screen name="projects/index" />
+        <Stack.Screen name="logs/index" />
+        <Stack.Screen name="personnel/index" />
+        <Stack.Screen name="sop/index" />
+        <Stack.Screen name="profile/index" />
       </Stack>
     </UserProvider>
   );
