@@ -12,13 +12,9 @@ export default function PersonnelScreen() {
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [currentPerson, setCurrentPerson] = useState<Personnel | null>(null);
 
-  // Form States
-  const [formData, setFormData] = useState({
-    name: '',
-    title: '',
-    email: '',
-    phone: '',
-    startDate: ''
+  // Form States (Using Partial<Personnel> for flexibility)
+  const [formData, setFormData] = useState<Partial<Personnel>>({
+    name: '', title: '', email: '', phone: '', startDate: '', birthDate: '', department: ''
   });
 
   const calculateTenure = (date: string) => {
@@ -32,7 +28,7 @@ export default function PersonnelScreen() {
   };
 
   const handleAddOpen = () => {
-    setFormData({ name: '', title: '', email: '', phone: '', startDate: '' });
+    setFormData({ name: '', title: '', email: '', phone: '', startDate: '', birthDate: '', department: '' });
     setAddModalVisible(true);
   };
 
@@ -47,13 +43,19 @@ export default function PersonnelScreen() {
       Alert.alert('錯誤', '請填寫姓名與職稱');
       return;
     }
-    // Simple date validation yyyy-mm-dd
-    if (formData.startDate && !/^\d{4}-\d{2}-\d{2}$/.test(formData.startDate)) {
-      Alert.alert('錯誤', '日期格式需為 YYYY-MM-DD');
-      return;
-    }
+    addPersonnel({
+      name: formData.name,
+      title: formData.title,
+      email: formData.email || '',
+      phone: formData.phone || '',
+      startDate: formData.startDate || new Date().toISOString().split('T')[0],
+      birthDate: formData.birthDate,
+      department: formData.department,
+      licenses: [],
+      education: [],
+      experience: []
+    } as any);
 
-    addPersonnel(formData);
     setAddModalVisible(false);
     Alert.alert('成功', '人員新增成功');
   };
@@ -78,7 +80,7 @@ export default function PersonnelScreen() {
               <View style={styles.avatar}><Text style={{ color: '#fff', fontSize: 24 }}>{item.name[0]}</Text></View>
               <View style={{ flex: 1, marginLeft: 15 }}>
                 <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.role}>{item.title}</Text>
+                <Text style={styles.role}>{item.title} {item.department ? `| ${item.department}` : ''}</Text>
               </View>
               <TouchableOpacity onPress={() => handleEditOpen(item)} style={{ padding: 5 }}>
                 <Ionicons name="create-outline" size={28} color="#C69C6D" />
@@ -86,6 +88,7 @@ export default function PersonnelScreen() {
             </View>
             <View style={styles.infoBox}>
               <Text style={{ color: '#555' }}>📧 {item.email || '未填寫'} | 📞 {item.phone || '未填寫'}</Text>
+              {item.birthDate && <Text style={{ color: '#555', marginTop: 4 }}>🎂 生日：{item.birthDate}</Text>}
               <View style={styles.tenure}>
                 <Text style={{ color: '#002147', fontWeight: 'bold' }}>服務年資：{calculateTenure(item.startDate)}</Text>
               </View>
@@ -108,20 +111,26 @@ export default function PersonnelScreen() {
               <TouchableOpacity onPress={() => setAddModalVisible(false)}><Ionicons name="close" size={24} color="#333" /></TouchableOpacity>
             </View>
             <ScrollView>
-              <Text style={styles.label}>姓名</Text>
-              <TextInput style={styles.input} value={formData.name} onChangeText={t => setFormData({ ...formData, name: t })} placeholder="請輸入姓名" />
+              <Text style={styles.label}>姓名 *</Text>
+              <TextInput style={styles.input} value={formData.name} onChangeText={t => setFormData({ ...formData, name: t })} />
 
-              <Text style={styles.label}>職稱</Text>
-              <TextInput style={styles.input} value={formData.title} onChangeText={t => setFormData({ ...formData, title: t })} placeholder="請輸入職稱" />
+              <Text style={styles.label}>職稱 *</Text>
+              <TextInput style={styles.input} value={formData.title} onChangeText={t => setFormData({ ...formData, title: t })} />
+
+              <Text style={styles.label}>部門</Text>
+              <TextInput style={styles.input} value={formData.department} onChangeText={t => setFormData({ ...formData, department: t })} />
 
               <Text style={styles.label}>Email</Text>
-              <TextInput style={styles.input} value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} placeholder="example@dwcc.com.tw" keyboardType="email-address" />
+              <TextInput style={styles.input} value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} keyboardType="email-address" />
 
               <Text style={styles.label}>電話</Text>
-              <TextInput style={styles.input} value={formData.phone} onChangeText={t => setFormData({ ...formData, phone: t })} placeholder="09xx-xxx-xxx" keyboardType="phone-pad" />
+              <TextInput style={styles.input} value={formData.phone} onChangeText={t => setFormData({ ...formData, phone: t })} keyboardType="phone-pad" />
 
               <Text style={styles.label}>到職日 (YYYY-MM-DD)</Text>
-              <TextInput style={styles.input} value={formData.startDate} onChangeText={t => setFormData({ ...formData, startDate: t })} placeholder="2024-01-01" />
+              <TextInput style={styles.input} value={formData.startDate} onChangeText={t => setFormData({ ...formData, startDate: t })} />
+
+              <Text style={styles.label}>生日 (YYYY-MM-DD)</Text>
+              <TextInput style={styles.input} value={formData.birthDate} onChangeText={t => setFormData({ ...formData, birthDate: t })} />
             </ScrollView>
             <TouchableOpacity style={styles.submitBtn} onPress={submitAdd}>
               <Text style={styles.submitBtnText}>確認新增</Text>
@@ -145,6 +154,9 @@ export default function PersonnelScreen() {
               <Text style={styles.label}>職稱</Text>
               <TextInput style={styles.input} value={formData.title} onChangeText={t => setFormData({ ...formData, title: t })} />
 
+              <Text style={styles.label}>部門</Text>
+              <TextInput style={styles.input} value={formData.department} onChangeText={t => setFormData({ ...formData, department: t })} />
+
               <Text style={styles.label}>Email</Text>
               <TextInput style={styles.input} value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} keyboardType="email-address" />
 
@@ -153,6 +165,9 @@ export default function PersonnelScreen() {
 
               <Text style={styles.label}>到職日</Text>
               <TextInput style={styles.input} value={formData.startDate} onChangeText={t => setFormData({ ...formData, startDate: t })} />
+
+              <Text style={styles.label}>生日</Text>
+              <TextInput style={styles.input} value={formData.birthDate} onChangeText={t => setFormData({ ...formData, birthDate: t })} />
             </ScrollView>
             <TouchableOpacity style={styles.submitBtn} onPress={submitEdit}>
               <Text style={styles.submitBtnText}>儲存變更</Text>

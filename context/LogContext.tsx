@@ -1,72 +1,93 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useState, useContext, ReactNode } from 'react';
 
-export interface ConstructionLog {
+export interface LogEntry {
   id: string;
   date: string;
+  project: string;
   weather: string;
-  projectId: string;
-  workItems: string;
-  workers: number;
-  notes?: string;
+  temperature: string;
+  content: string;
+  reporter: string;
+  status: 'draft' | 'pending_review' | 'approved' | 'rejected'; // 審核狀態
 }
 
 interface LogContextType {
-  logs: ConstructionLog[];
-  addLog: (log: Omit<ConstructionLog, 'id'>) => Promise<void>;
-  deleteLog: (id: string) => Promise<void>;
-  searchLogs: (query: string) => ConstructionLog[];
+  logs: LogEntry[];
+  addLog: (log: Omit<LogEntry, 'id'>) => void;
+  updateLog: (id: string, data: Partial<LogEntry>) => void;
+  deleteLog: (id: string) => void;
 }
 
-const LogContext = createContext<LogContextType | undefined>(undefined);
+const LogContext = createContext<LogContextType | null>(null);
 
-const MOCK_LOGS: ConstructionLog[] = [
-  { id: '1', date: '2023-12-20', weather: '晴', projectId: '東后豐', workItems: '路基整平', workers: 5 },
-  { id: '2', date: '2023-12-21', weather: '陰', projectId: '東后豐', workItems: 'AC鋪設', workers: 8 }
-];
+export const LogProvider = ({ children }: { children: ReactNode }) => {
+  const [logs, setLogs] = useState<LogEntry[]>([
+    {
+      id: '1',
+      date: '2026-01-20',
+      project: '台中七期商辦',
+      weather: '晴 ☀️',
+      temperature: '24°C',
+      content: '1. 1F 柱牆鋼筋綁紮查驗\n2. B1F 模板拆除作業',
+      reporter: '吳資彬',
+      status: 'pending_review' // 待審核
+    },
+    {
+      id: '2',
+      date: '2026-01-19',
+      project: '台中七期商辦',
+      weather: '陰 ☁️',
+      temperature: '20°C',
+      content: '1. B1F 混凝土澆置養護\n2. 進場材料：鋼筋 50 噸',
+      reporter: '陳曉華',
+      status: 'approved' // 已簽核
+    },
+    {
+      id: '3',
+      date: '2026-01-18',
+      project: '高雄亞灣住宅案',
+      weather: '雨 🌧️',
+      temperature: '18°C',
+      content: '1. 暫停戶外吊掛作業\n2. 室內泥作粉刷',
+      reporter: '林建國',
+      status: 'pending_review' // 待審核
+    },
+    {
+      id: '4',
+      date: '2026-01-18',
+      project: '桃園青埔物流中心',
+      weather: '晴',
+      temperature: '22°C',
+      content: '1. 整地作業',
+      reporter: '張志偉',
+      status: 'draft' // 草稿
+    },
+  ]);
 
-export function LogProvider({ children }: { children: React.ReactNode }) {
-  const [logs, setLogs] = useState<ConstructionLog[]>([]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('dw_logs');
-        if (stored) setLogs(JSON.parse(stored));
-        else {
-          setLogs(MOCK_LOGS);
-          await AsyncStorage.setItem('dw_logs', JSON.stringify(MOCK_LOGS));
-        }
-      } catch (e) { console.error(e); }
-    };
-    loadData();
-  }, []);
-
-  const saveLogs = async (newData: ConstructionLog[]) => {
-    setLogs(newData);
-    await AsyncStorage.setItem('dw_logs', JSON.stringify(newData));
+  const addLog = (log: Omit<LogEntry, 'id'>) => {
+    const newLog = { ...log, id: Math.random().toString(36).substr(2, 9) };
+    setLogs(prev => [newLog, ...prev]);
   };
 
-  const addLog = async (log: Omit<ConstructionLog, 'id'>) => {
-    await saveLogs([{ ...log, id: Date.now().toString() }, ...logs]);
+  const updateLog = (id: string, data: Partial<LogEntry>) => {
+    setLogs(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
   };
-  const deleteLog = async (id: string) => {
-    await saveLogs(logs.filter(l => l.id !== id));
-  };
-  const searchLogs = (query: string) => {
-    if (!query) return logs;
-    return logs.filter(l => l.workItems.includes(query) || l.projectId.includes(query));
+
+  const deleteLog = (id: string) => {
+    setLogs(prev => prev.filter(l => l.id !== id));
   };
 
   return (
-    <LogContext.Provider value={{ logs, addLog, deleteLog, searchLogs }}>
+    <LogContext.Provider value={{ logs, addLog, updateLog, deleteLog }}>
       {children}
     </LogContext.Provider>
   );
-}
+};
 
-export function useLog() {
+export const useLogs = () => {
   const context = useContext(LogContext);
-  if (!context) throw new Error('useLog Error');
+  if (!context) {
+    throw new Error('useLogs must be used within a LogProvider');
+  }
   return context;
-}
+};

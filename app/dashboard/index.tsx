@@ -1,23 +1,108 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Modal, Alert, Platform, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Modal, Alert, Platform, StatusBar, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../../context/UserContext';
+import { useProjects } from '../../context/ProjectContext';
+import { useLogs } from '../../context/LogContext';
 import { useState } from 'react';
+
+// Announcement Interface
+interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  author: string;
+}
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { logout, user } = useUser();
+  const { projects } = useProjects();
+  const { logs } = useLogs();
+
   const [menuVisible, setMenuVisible] = useState(false);
+
+  // Announcement States
+  const [announcements, setAnnouncements] = useState<Announcement[]>([
+    { id: '1', title: '系統上線通知', content: '歡迎使用全新版本，功能選單與頁面路徑已全數修復。', date: '2026/01/15', author: '管理員' }
+  ]);
+  const [isAnnounceModalVisible, setAnnounceModalVisible] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [announceForm, setAnnounceForm] = useState({ title: '', content: '' });
+
+  // 1. 統計邏輯
+  // 進行中專案：Status = 'construction'
+  const activeProjectsCount = projects.filter(p => p.status === 'construction').length;
+  // 待審核紀錄：Status = 'pending_review' (假設 LogContext 有此狀態)
+  const pendingLogsCount = logs.filter(l => l.status === 'pending_review').length;
 
   const navTo = (path: string) => {
     setMenuVisible(false);
-    // 檢查路徑是否有效，若是根目錄則 replace，否則 push
     if (path === '/') {
       logout();
       router.replace('/');
     } else {
       router.push(path as any);
     }
+  };
+
+  // Add Announcement
+  const handleOpenAdd = () => {
+    setEditingAnnouncement(null);
+    setAnnounceForm({ title: '', content: '' });
+    setAnnounceModalVisible(true);
+  };
+
+  // Edit Announcement
+  const handleOpenEdit = (ann: Announcement) => {
+    setEditingAnnouncement(ann);
+    setAnnounceForm({ title: ann.title, content: ann.content });
+    setAnnounceModalVisible(true);
+  };
+
+  const handleSubmitAnnouncement = () => {
+    if (!announceForm.title || !announceForm.content) {
+      Alert.alert('錯誤', '標題與內容不可為空');
+      return;
+    }
+
+    if (editingAnnouncement) {
+      // Update existing
+      setAnnouncements(prev => prev.map(a => a.id === editingAnnouncement.id ? {
+        ...a,
+        title: announceForm.title,
+        content: announceForm.content,
+        // Optional: update date or keep original
+      } : a));
+      Alert.alert('成功', '公告已更新');
+    } else {
+      // Create new
+      const newAnn: Announcement = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: announceForm.title,
+        content: announceForm.content,
+        date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
+        author: user?.name || '管理員'
+      };
+      setAnnouncements([newAnn, ...announcements]);
+      Alert.alert('成功', '公告已發布');
+    }
+    setAnnounceModalVisible(false);
+  };
+
+  // Delete Announcement
+  const handleDeleteAnnouncement = () => {
+    if (!editingAnnouncement) return;
+    Alert.alert('確認刪除', '確定要刪除此公告嗎？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '刪除', style: 'destructive', onPress: () => {
+          setAnnouncements(prev => prev.filter(a => a.id !== editingAnnouncement.id));
+          setAnnounceModalVisible(false);
+        }
+      }
+    ]);
   };
 
   const menuItems = [
@@ -42,7 +127,6 @@ export default function DashboardScreen() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>DW工程日誌系統</Text>
           <View style={{ width: 28 }} />
-          {/* Placeholder for balance */}
         </View>
       </SafeAreaView>
 
@@ -56,34 +140,38 @@ export default function DashboardScreen() {
           <Text style={styles.sectionTitle}>公告欄</Text>
           <TouchableOpacity
             style={styles.addBtn}
-            onPress={() => Alert.alert('管理權限', '開啟新增公告頁面')}
+            onPress={handleOpenAdd}
           >
             <Ionicons name="add" size={18} color="#002147" />
             <Text style={styles.addBtnText}>新增公告</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>系統上線通知</Text>
-            <View style={styles.cardActions}>
-              <TouchableOpacity onPress={() => Alert.alert('管理', '編輯公告')}>
-                <Ionicons name="pencil" size={20} color="#C69C6D" />
-              </TouchableOpacity>
+        {announcements.length === 0 ? (
+          <Text style={{ color: '#999', marginBottom: 20 }}>暫無公告</Text>
+        ) : announcements.map((ann) => (
+          <View key={ann.id} style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>{ann.title}</Text>
+              <View style={styles.cardActions}>
+                <TouchableOpacity onPress={() => handleOpenEdit(ann)}>
+                  <Ionicons name="pencil" size={20} color="#C69C6D" />
+                </TouchableOpacity>
+              </View>
             </View>
+            <Text style={styles.cardContent}>{ann.content}</Text>
+            <Text style={styles.cardFooter}>{ann.date} | {ann.author}</Text>
           </View>
-          <Text style={styles.cardContent}>歡迎使用全新版本，功能選單與頁面路徑已全數修復。</Text>
-          <Text style={styles.cardFooter}>2026/01/15 | 管理員</Text>
-        </View>
+        ))}
 
-        {/* Quick Actions / Dashboard Widgets can go here */}
+        {/* Dashboard Widgets (Stats) */}
         <View style={styles.statsContainer}>
           <View style={styles.statBox}>
-            <Text style={styles.statNumber}>3</Text>
+            <Text style={styles.statNumber}>{activeProjectsCount}</Text>
             <Text style={styles.statLabel}>進行中專案</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statNumber}>12</Text>
+            <Text style={styles.statNumber}>{pendingLogsCount}</Text>
             <Text style={styles.statLabel}>待審核紀錄</Text>
           </View>
         </View>
@@ -129,6 +217,52 @@ export default function DashboardScreen() {
           <TouchableOpacity style={styles.overlayTouch} onPress={() => setMenuVisible(false)} />
         </View>
       </Modal>
+
+      {/* Announcement Modal */}
+      <Modal visible={isAnnounceModalVisible} animationType="slide" transparent onRequestClose={() => setAnnounceModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.announceModalOverlay}>
+          <View style={styles.announceModalContent}>
+            <View style={styles.announceModalHeader}>
+              <Text style={styles.announceModalTitle}>{editingAnnouncement ? '編輯公告' : '新增公告'}</Text>
+              <TouchableOpacity onPress={() => setAnnounceModalVisible(false)}>
+                <Ionicons name="close" size={26} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.formContainer}>
+              <Text style={styles.label}>公告標題</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="請輸入標題"
+                value={announceForm.title}
+                onChangeText={t => setAnnounceForm({ ...announceForm, title: t })}
+              />
+
+              <Text style={styles.label}>公告內容</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="請輸入詳細內容..."
+                multiline
+                textAlignVertical="top"
+                value={announceForm.content}
+                onChangeText={t => setAnnounceForm({ ...announceForm, content: t })}
+              />
+            </View>
+
+            <View style={styles.modalFooter}>
+              {editingAnnouncement && (
+                <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAnnouncement}>
+                  <Text style={styles.deleteBtnText}>刪除</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitAnnouncement}>
+                <Text style={styles.submitBtnText}>{editingAnnouncement ? '儲存變更' : '立即發布'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </View>
   );
 }
@@ -160,6 +294,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingBottom: 50,
   },
   welcomeText: {
     fontSize: 18,
@@ -205,7 +340,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     marginBottom: 20,
-    // Fix: replaced 'border' shorthand with explicit properties
     borderWidth: 1,
     borderColor: '#eee',
   },
@@ -256,7 +390,7 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 5,
   },
-  // Modal / Side Menu
+  // Side Menu
   modalOverlay: {
     flex: 1,
     flexDirection: 'row',
@@ -316,6 +450,84 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     marginLeft: 10,
+    fontSize: 16,
+  },
+  // Announcement Modal
+  announceModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  announceModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 25,
+    minHeight: '60%',
+  },
+  announceModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  announceModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#002147',
+  },
+  formContainer: {
+    flex: 1,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+    marginTop: 10,
+  },
+  input: {
+    backgroundColor: '#F5F7FA',
+    borderRadius: 8,
+    padding: 15,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  textArea: {
+    height: 150,
+    paddingTop: 15,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    marginTop: 20,
+    justifyContent: 'flex-end',
+  },
+  submitBtn: {
+    backgroundColor: '#C69C6D',
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    borderRadius: 10,
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 10,
+  },
+  submitBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  deleteBtn: {
+    backgroundColor: '#FF6B6B',
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    borderRadius: 10,
+    alignItems: 'center',
+    width: 100,
+  },
+  deleteBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
     fontSize: 16,
   },
 });

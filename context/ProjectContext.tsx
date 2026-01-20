@@ -1,124 +1,106 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useState, useContext, ReactNode } from 'react';
 
-export type ProjectStatus = 
-  | 'not_started'       // 未開工
-  | 'started_offsite'   // 已開工未進場
-  | 'ongoing'           // 施工中
-  | 'completed_pending' // 完工待驗收
-  | 'inspecting'        // 驗收中
-  | 'closed';           // 結案
-
-// 1. 定義詳細的展延紀錄結構
 export interface Extension {
   id: string;
-  date: string;         // 系統紀錄日期 (或核准日期)
-  days: number;         // 展延天數
-  reason: string;       // 展延理由
-  letterDate: string;   // 函文日期
-  letterNumber: string; // 函文文號
+  days: number;
+  date: string;       // 公文日期
+  docNumber: string;  // 公文文號
+  reason: string;     // 展延理由
 }
 
 export interface Project {
   id: string;
   name: string;
-  location: string;
+  address: string;
   manager: string;
-
-  // --- 契約與日期 ---
-  awardDate?: string;       // 決標日期
-  contractDuration: string; // 契約工期
-  durationType: 'calendar' | 'working';
-  startDate: string;        // 開工日期
-  
-  // --- 驗收相關 ---
-  actualCompletionDate?: string; // 實際竣工日
-  inspectionDate?: string;       // 驗收日期
-  reinspectionDate?: string;     // 複驗日期
-  inspectionPassedDate?: string; // 驗收合格日
-
-  status: ProjectStatus;
   progress: number;
-  
-  // --- 展延紀錄 (陣列) ---
-  extensions: Extension[]; 
+  status: 'planning' | 'construction' | 'completed' | 'suspended';
+  startDate?: string;          // 開工日
+  contractDuration?: number;   // 契約工期 (天)
+  extensions?: Extension[];    // 展延列表
 }
 
 interface ProjectContextType {
   projects: Project[];
-  addProject: (project: Omit<Project, 'id'>) => Promise<void>;
-  deleteProject: (id: string) => Promise<void>;
-  updateProject: (id: string, data: Partial<Project>) => Promise<void>;
-  searchProjects: (query: string) => Project[];
+  addProject: (proj: Omit<Project, 'id'>) => void;
+  updateProject: (id: string, data: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
 }
 
-const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
+const ProjectContext = createContext<ProjectContextType | null>(null);
 
-const MOCK_PROJECTS: Project[] = []; 
+export const ProjectProvider = ({ children }: { children: ReactNode }) => {
+  const [projects, setProjects] = useState<Project[]>([
+    {
+      id: '1',
+      name: '台中七期商辦大樓',
+      address: '台中市西屯區市政路',
+      manager: '王大明',
+      progress: 35,
+      status: 'construction',
+      startDate: '2025-01-01',
+      contractDuration: 600,
+      extensions: []
+    },
+    {
+      id: '2',
+      name: '高雄亞灣住宅案',
+      address: '高雄市前鎮區成功路',
+      manager: '林建國',
+      progress: 12,
+      status: 'construction',
+      startDate: '2025-06-01',
+      contractDuration: 450,
+      extensions: []
+    },
+    {
+      id: '3',
+      name: '台北信義區總部修繕',
+      address: '台北市信義區松高路',
+      manager: '陳曉華',
+      progress: 85,
+      status: 'construction',
+      startDate: '2024-05-15',
+      contractDuration: 300,
+      extensions: [{ id: 'e1', days: 15, date: '2024-10-01', docNumber: '北市工字第12345號', reason: '颱風影響' }]
+    },
+    {
+      id: '4',
+      name: '桃園青埔物流中心',
+      address: '桃園市中壢區領航北路',
+      manager: '張志偉',
+      progress: 0,
+      status: 'planning',
+      startDate: '',
+      contractDuration: 0,
+      extensions: []
+    }
+  ]);
 
-export function ProjectProvider({ children }: { children: React.ReactNode }) {
-  const [projects, setProjects] = useState<Project[]>([]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('dw_projects');
-        if (stored) {
-          setProjects(JSON.parse(stored));
-        } else {
-          setProjects(MOCK_PROJECTS);
-          await AsyncStorage.setItem('dw_projects', JSON.stringify(MOCK_PROJECTS));
-        }
-      } catch (e) {
-        console.error('Failed to load projects', e);
-      }
-    };
-    loadData();
-  }, []);
-
-  const saveToStorage = async (newData: Project[]) => {
-    setProjects(newData);
-    await AsyncStorage.setItem('dw_projects', JSON.stringify(newData));
+  const addProject = (proj: Omit<Project, 'id'>) => {
+    const newProj = { ...proj, id: Math.random().toString(36).substr(2, 9) };
+    setProjects(prev => [newProj, ...prev]);
   };
 
-  const addProject = async (project: Omit<Project, 'id'>) => {
-    const newProject: Project = { 
-      ...project, 
-      id: Date.now().toString(),
-      extensions: [] 
-    };
-    const newData = [newProject, ...projects];
-    await saveToStorage(newData);
+  const updateProject = (id: string, data: Partial<Project>) => {
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
   };
 
-  const deleteProject = async (id: string) => {
-    const newData = projects.filter(p => p.id !== id);
-    await saveToStorage(newData);
-  };
-
-  const updateProject = async (id: string, data: Partial<Project>) => {
-    const newData = projects.map(p => p.id === id ? { ...p, ...data } : p);
-    await saveToStorage(newData);
-  };
-
-  const searchProjects = (query: string) => {
-    if (!query) return projects;
-    return projects.filter(p => 
-      p.name.includes(query) || 
-      p.location.includes(query) ||
-      p.manager.includes(query)
-    );
+  const deleteProject = (id: string) => {
+    setProjects(prev => prev.filter(p => p.id !== id));
   };
 
   return (
-    <ProjectContext.Provider value={{ projects, addProject, deleteProject, updateProject, searchProjects }}>
+    <ProjectContext.Provider value={{ projects, addProject, updateProject, deleteProject }}>
       {children}
     </ProjectContext.Provider>
   );
-}
+};
 
-export function useProject() {
+export const useProjects = () => {
   const context = useContext(ProjectContext);
-  if (!context) throw new Error('useProject must be used within a ProjectProvider');
+  if (!context) {
+    throw new Error('useProjects must be used within a ProjectProvider');
+  }
   return context;
-}
+};
