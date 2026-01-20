@@ -1,26 +1,52 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, ReactNode } from 'react';
 
-const UserContext = createContext<any>(null);
+// 定義 User 型別，避免使用 any
+interface User {
+  email: string;
+  role: string;
+  name?: string;
+}
 
-export const UserProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<any>(null);
+interface UserContextType {
+  user: User | null;
+  isLoading: boolean;
+  login: (email: string, pass: string) => Promise<boolean>;
+  logout: () => void;
+}
+
+const UserContext = createContext<UserContextType | null>(null);
+
+export const UserProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const login = async (email: string, pass: string) => {
-    setIsLoading(true);
-    // 模擬登入延遲
-    await new Promise(resolve => setTimeout(resolve, 500));
-    // 簡易測試邏輯：只要有輸入就登入
-    if (email && pass) {
-      setUser({ email, role: 'admin' });
+  const login = async (email: string, pass: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      // 模擬 API 請求延遲
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // 簡易驗證邏輯
+      if (email.trim() && pass.trim()) {
+        setUser({ 
+          email, 
+          role: 'admin',
+          name: '吳資彬' // 範例名稱
+        });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
+    } finally {
       setIsLoading(false);
-      return true;
     }
-    setIsLoading(false);
-    return false;
   };
 
-  const logout = () => setUser(null);
+  const logout = () => {
+    setUser(null);
+  };
 
   return (
     <UserContext.Provider value={{ user, login, logout, isLoading }}>
@@ -29,4 +55,10 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export const useUser = () => useContext(UserContext);
+export const useUser = () => {
+  const context = useContext(UserContext);
+  if (!context) {
+    throw new Error('useUser must be used within a UserProvider');
+  }
+  return context;
+};
