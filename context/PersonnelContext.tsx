@@ -23,7 +23,8 @@ export interface Personnel {
     department?: string;     // 部門
     licenses?: string[];     // 證照清單
     education?: Education[]; // 學歷
-    experience?: Experience[] // 經歷
+    experience?: Experience[]; // 經歷
+    initialPassword?: string; // 初始密碼 (ROC Birthday)
 }
 
 interface PersonnelContextType {
@@ -47,6 +48,7 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
             startDate: '2017-07-17',
             birthDate: '1988-05-20',
             department: '工務部',
+            initialPassword: '0770520',
             licenses: ['工地主任', '品管工程師', '勞安乙級'],
             education: [
                 { school: '國立成功大學', degree: '土木工程系 學士', year: '2010' },
@@ -64,6 +66,9 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
             email: 'chen@dwcc.com.tw',
             phone: '0912-345-678',
             startDate: '2019-03-01',
+            birthDate: '1990-01-01',
+            department: '工務部',
+            initialPassword: '0790101',
             education: [],
             experience: [],
             licenses: []

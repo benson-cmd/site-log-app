@@ -1,56 +1,54 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Modal, TextInput, KeyboardAvoidingView, StyleProp, ViewStyle } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useProject, Project, ProjectStatus, Extension } from '../../context/ProjectContext';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Modal, TextInput, KeyboardAvoidingView, SafeAreaView } from 'react-native';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useProjects, Project, Extension } from '../../context/ProjectContext'; // Corrected Import
 import { useUser } from '../../context/UserContext';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, createElement } from 'react'; // 加入 createElement
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useState } from 'react';
 
 const THEME = {
-  background: '#ffffff',
-  text: '#002147',
-  textSec: '#555555',
-  cardBg: '#ffffff',
-  accent: '#C69C6D',
-  border: '#E0E0E0',
-  danger: '#ff4444',
-  inputBg: '#F5F5F5'
-};
-
-const STATUS_MAP: Record<ProjectStatus, string> = {
-  'not_started': '未開工',
-  'started_offsite': '已開工未進場',
-  'ongoing': '施工中',
-  'completed_pending': '完工待驗收',
-  'inspecting': '驗收中',
-  'closed': '結案'
+  primary: '#C69C6D',
+  background: '#F5F7FA',
+  card: '#ffffff',
+  headerBg: '#002147',
+  text: '#333333',
+  danger: '#FF6B6B'
 };
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams();
-  const { projects, deleteProject, updateProject } = useProject();
-  const { isAdmin, allUsers } = useUser();
+  const { projects, deleteProject, updateProject } = useProjects(); // Fixed Hook
+  const { user } = useUser(); // Using simple user check for now
   const router = useRouter();
 
   const project = projects.find(p => p.id === id);
-  
+
+  // State for Edit
   const [isEditVisible, setIsEditVisible] = useState(false);
   const [editData, setEditData] = useState<Partial<Project>>({});
-  
-  const [newExt, setNewExt] = useState<Partial<Extension>>({ letterDate: '', letterNumber: '', reason: '', days: 0 });
+
+  // State for adding extension inside Edit Mode
+  const [newExt, setNewExt] = useState<Partial<Extension>>({ date: '', docNumber: '', reason: '', days: 0 });
   const [showExtForm, setShowExtForm] = useState(false);
 
-  if (!project) return null;
+  if (!project) return (
+    <View style={styles.container}>
+      <SafeAreaView><Text style={{ textAlign: 'center', marginTop: 100 }}>找不到專案資訊</Text></SafeAreaView>
+    </View>
+  );
 
+  // Calc Logic
   const calculateTotalExtension = (exts: Extension[] = []) => {
     return exts.reduce((sum, e) => sum + (Number(e.days) || 0), 0);
   };
 
-  const calculateEndDate = (start: string, duration: string, extDays: number) => {
-    if (!start || !duration) return '資料不全';
+  const calculateEndDate = (start: string | undefined, duration: number | undefined, extDays: number) => {
+    if (!start || !duration) return '-';
     try {
       const startDate = new Date(start);
-      const totalDays = parseInt(duration) + extDays - 1; 
+      if (isNaN(startDate.getTime())) return '-';
+
+      // Formula: Start + Duration + Ext - 1
+      const totalDays = duration + extDays - 1;
       startDate.setDate(startDate.getDate() + totalDays);
       return startDate.toISOString().split('T')[0];
     } catch (e) {
@@ -61,13 +59,20 @@ export default function ProjectDetailScreen() {
   const displayExtDays = calculateTotalExtension(project.extensions);
   const displayEndDate = calculateEndDate(project.startDate, project.contractDuration, displayExtDays);
 
-  const editExtDays = calculateTotalExtension(editData.extensions);
-  const editEndDate = calculateEndDate(editData.startDate || '', editData.contractDuration || '0', editExtDays);
+  const editExtDays = calculateTotalExtension(editData.extensions || []);
+  const editEndDate = calculateEndDate(editData.startDate, editData.contractDuration, editExtDays);
 
+  // Handlers
   const handleDelete = () => {
-    const action = async () => { await deleteProject(project.id); router.back(); };
-    if (Platform.OS === 'web') { if(confirm('確定刪除？')) action(); }
-    else { Alert.alert('刪除確認', '確定刪除？', [{text:'取消'}, {text:'刪除', style:'destructive', onPress:action}]); }
+    Alert.alert('刪除確認', `確定要刪除 ${project.name} 嗎？此動作無法復原。`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '刪除', style: 'destructive', onPress: () => {
+          deleteProject(project.id);
+          router.back();
+        }
+      }
+    ]);
   };
 
   const openEdit = () => {
@@ -75,27 +80,28 @@ export default function ProjectDetailScreen() {
     setIsEditVisible(true);
   };
 
-  const handleSaveEdit = async () => {
-    await updateProject(project.id, editData);
+  const handleSaveEdit = () => {
+    if (!editData.name) { Alert.alert('錯誤', '專案名稱不可為空'); return; }
+    updateProject(project.id, editData);
     setIsEditVisible(false);
     Alert.alert('成功', '專案資料已更新');
   };
 
+  // Extension Mgmt inside Edit
   const addExtension = () => {
     if (!newExt.days || !newExt.reason) {
       Alert.alert('錯誤', '請填寫天數與理由');
       return;
     }
     const extension: Extension = {
-      id: Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
+      id: Math.random().toString(36).substr(2, 9),
+      date: newExt.date || new Date().toISOString().split('T')[0],
       days: Number(newExt.days),
       reason: newExt.reason || '',
-      letterDate: newExt.letterDate || '',
-      letterNumber: newExt.letterNumber || ''
+      docNumber: newExt.docNumber || ''
     };
     setEditData(prev => ({ ...prev, extensions: [...(prev.extensions || []), extension] }));
-    setNewExt({ letterDate: '', letterNumber: '', reason: '', days: 0 });
+    setNewExt({ date: '', docNumber: '', reason: '', days: 0 });
     setShowExtForm(false);
   };
 
@@ -103,337 +109,237 @@ export default function ProjectDetailScreen() {
     setEditData(prev => ({ ...prev, extensions: prev.extensions?.filter(e => e.id !== extId) }));
   };
 
+  const InfoRow = ({ label, value, highlight }: any) => (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, highlight && { color: THEME.primary, fontWeight: 'bold' }]}>{value || '-'}</Text>
+    </View>
+  );
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{project.name}</Text>
-        <View style={styles.badge}><Text style={styles.badgeText}>{STATUS_MAP[project.status]}</Text></View>
-      </View>
+    <View style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.headerArea}>
+        <View style={styles.navHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>專案詳情</Text>
+          <View style={{ width: 24 }} />
+        </View>
+      </SafeAreaView>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>基本資訊</Text>
-        <InfoRow label="工程地點" value={project.location} />
-        <InfoRow label="工地主任" value={project.manager} />
-        <InfoRow label="決標日期" value={project.awardDate} />
-      </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.titleSection}>
+          <Text style={styles.projectTitle}>{project.name}</Text>
+          <View style={[styles.statusTag, { backgroundColor: project.status === 'construction' ? '#E3F2FD' : '#eee' }]}>
+            <Text style={{ color: '#002147', fontWeight: 'bold', fontSize: 12 }}>
+              {project.status === 'construction' ? '施工中' : project.status === 'planning' ? '規劃中' : '已完工'}
+            </Text>
+          </View>
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>工期與進度</Text>
-        <InfoRow label="開工日期" value={project.startDate} />
-        <InfoRow label="契約工期" value={`${project.contractDuration} 天 (${project.durationType === 'calendar'?'日曆天':'工作天'})`} />
-        <InfoRow label="展延工期" value={`${displayExtDays} 天`} />
-        <InfoRow label="預定竣工" value={displayEndDate} highlight />
-        <View style={styles.divider} />
-        <InfoRow label="實際竣工" value={project.actualCompletionDate} />
-        <InfoRow label="驗收日期" value={project.inspectionDate} />
-        <InfoRow label="複驗日期" value={project.reinspectionDate} />
-        <InfoRow label="驗收合格" value={project.inspectionPassedDate} />
-      </View>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>基本資訊</Text>
+          <InfoRow label="工程地點" value={project.address} />
+          <InfoRow label="工地主任" value={project.manager} />
+          <InfoRow label="決標日期" value={project.awardDate} />
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>展延紀錄 ({project.extensions?.length || 0}筆)</Text>
-        {project.extensions && project.extensions.length > 0 ? (
-          project.extensions.map((ext, idx) => (
-            <View key={idx} style={styles.extCard}>
-              <View style={styles.extHeader}>
-                <Text style={styles.extReason}>{ext.reason}</Text>
-                <Text style={styles.extDays}>+{ext.days}天</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>工期管理</Text>
+          <InfoRow label="開工日期" value={project.startDate} />
+          <InfoRow label="契約工期" value={project.contractDuration ? `${project.contractDuration} 天` : '-'} />
+          <InfoRow label="展延天數" value={`${displayExtDays} 天`} />
+          <View style={styles.divider} />
+          <InfoRow label="預定竣工" value={displayEndDate} highlight />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>驗收結案</Text>
+          <InfoRow label="實際竣工" value={project.actualCompletionDate} />
+          <InfoRow label="驗收日期" value={project.inspectionDate} />
+          <InfoRow label="複驗日期" value={project.reinspectionDate} />
+          <InfoRow label="驗收合格" value={project.inspectionPassedDate} />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>展延明細 ({project.extensions?.length || 0})</Text>
+          {project.extensions?.map((ext, idx) => (
+            <View key={idx} style={styles.extRow}>
+              <View>
+                <Text style={styles.extReason}>{idx + 1}. {ext.reason}</Text>
+                <Text style={styles.extMeta}>{ext.date} | 文號: {ext.docNumber}</Text>
               </View>
-              <Text style={styles.extMeta}>函文：{ext.letterDate} {ext.letterNumber}</Text>
+              <Text style={styles.extDays}>+{ext.days}天</Text>
             </View>
-          ))
-        ) : <Text style={styles.noData}>無展延紀錄</Text>}
-      </View>
+          ))}
+          {(!project.extensions || project.extensions.length === 0) && <Text style={{ color: '#999', fontStyle: 'italic' }}>無展延紀錄</Text>}
+        </View>
 
-      {isAdmin && (
+        {/* Edit Button */}
         <TouchableOpacity style={styles.editBtn} onPress={openEdit}>
-          <Text style={styles.btnText}>編輯專案與工期</Text>
+          <Text style={styles.editBtnText}>編輯專案</Text>
         </TouchableOpacity>
-      )}
-      <View style={{height: 50}} />
+        <View style={{ height: 40 }} />
+      </ScrollView>
 
-      {/* --- 編輯 Modal --- */}
-      <Modal visible={isEditVisible} animationType="slide" presentationStyle="pageSheet">
-        <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':'height'} style={{flex:1}}>
+      {/* Edit Modal */}
+      <Modal visible={isEditVisible} animationType="slide" transparent>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>編輯專案</Text>
-              <TouchableOpacity onPress={() => setIsEditVisible(false)}><Ionicons name="close" size={28} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setIsEditVisible(false)}><Ionicons name="close" size={28} color="#333" /></TouchableOpacity>
             </View>
-            
-            <ScrollView contentContainerStyle={{padding: 20}}>
-              {/* 基本設定 */}
-              <Text style={styles.groupTitle}>基本設定</Text>
-              <Input label="專案名稱" value={editData.name} onChange={t => setEditData({...editData, name: t})} />
-              <Input label="工程地點" value={editData.location} onChange={t => setEditData({...editData, location: t})} />
-              
-              <View style={{ marginBottom: 15 }}>
-                <Text style={{ marginBottom: 5, color: '#666', fontWeight: 'bold', fontSize: 13 }}>工地主任</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {allUsers.map(user => (
-                    <TouchableOpacity 
-                      key={user.id} 
-                      onPress={() => setEditData({...editData, manager: user.name})} 
-                      style={[styles.chip, editData.manager === user.name && styles.chipActive]}
-                    >
-                      <Text style={[styles.chipText, editData.manager === user.name && styles.chipTextActive]}>{user.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
 
-              <Input label="施工狀態" value={editData.status} options={STATUS_MAP} onSelect={(k) => setEditData({...editData, status: k as ProjectStatus})} isSelect />
-              <Input label="目前進度 (%)" value={String(editData.progress)} onChange={t => setEditData({...editData, progress: parseInt(t)||0})} keyboardType="numeric" />
+            <ScrollView style={styles.modalBody}>
+              <Text style={styles.groupHeader}>基本資料</Text>
+              <Text style={styles.label}>專案名稱</Text>
+              <TextInput style={styles.input} value={editData.name} onChangeText={t => setEditData({ ...editData, name: t })} />
+              <Text style={styles.label}>地址</Text>
+              <TextInput style={styles.input} value={editData.address} onChangeText={t => setEditData({ ...editData, address: t })} />
+              <Text style={styles.label}>工地主任</Text>
+              <TextInput style={styles.input} value={editData.manager} onChangeText={t => setEditData({ ...editData, manager: t })} />
 
-              {/* 關鍵日期 */}
-              <Text style={styles.groupTitle}>關鍵日期</Text>
+              <Text style={styles.groupHeader}>關鍵日期</Text>
               <View style={styles.row}>
-                <DateInput label="決標日期" value={editData.awardDate} onChange={t => setEditData({...editData, awardDate: t})} style={{flex:1, marginRight:10}} />
-                <DateInput label="開工日期" value={editData.startDate} onChange={t => setEditData({...editData, startDate: t})} style={{flex:1}} />
-              </View>
-              <View style={styles.row}>
-                <Input label="契約工期(天)" value={editData.contractDuration} onChange={t => setEditData({...editData, contractDuration: t})} keyboardType="numeric" style={{flex:1, marginRight:10}} />
-                
-                {/* 工期類型 (修復按鈕點選) */}
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <Text style={styles.label}>工期類型</Text>
-                  <View style={{ flexDirection: 'row', gap: 5 }}>
-                    <TouchableOpacity 
-                      style={[styles.chip, (editData.durationType || 'calendar') === 'calendar' && styles.chipActive]} 
-                      onPress={() => setEditData({...editData, durationType: 'calendar'})}
-                    >
-                      <Text style={[styles.chipText, (editData.durationType || 'calendar') === 'calendar' && styles.chipTextActive]}>日曆天</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.chip, editData.durationType === 'working' && styles.chipActive]} 
-                      onPress={() => setEditData({...editData, durationType: 'working'})}
-                    >
-                      <Text style={[styles.chipText, editData.durationType === 'working' && styles.chipTextActive]}>工作天</Text>
-                    </TouchableOpacity>
-                  </View>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.label}>決標日期</Text>
+                  <TextInput style={styles.input} value={editData.awardDate} onChangeText={t => setEditData({ ...editData, awardDate: t })} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label}>開工日期</Text>
+                  <TextInput style={styles.input} value={editData.startDate} onChangeText={t => setEditData({ ...editData, startDate: t })} />
                 </View>
               </View>
-
-              {/* 展延管理 */}
-              <View style={styles.extSection}>
-                <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
-                  <Text style={styles.groupTitle}>展延工期管理</Text>
-                  <TouchableOpacity onPress={() => setShowExtForm(!showExtForm)}>
-                    <Text style={{color:THEME.accent, fontWeight:'bold'}}>{showExtForm ? '取消新增' : '+ 新增紀錄'}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {showExtForm && (
-                  <View style={styles.addExtForm}>
-                    <DateInput label="函文日期" value={newExt.letterDate} onChange={t => setNewExt({...newExt, letterDate: t})} />
-                    <Input label="函文文號" value={newExt.letterNumber} onChange={t => setNewExt({...newExt, letterNumber: t})} />
-                    <Input label="展延理由" value={newExt.reason} onChange={t => setNewExt({...newExt, reason: t})} />
-                    <Input label="展延天數" value={String(newExt.days)} onChange={t => setNewExt({...newExt, days: Number(t)})} keyboardType="numeric" />
-                    <TouchableOpacity style={styles.addBtn} onPress={addExtension}><Text style={styles.addBtnText}>加入列表</Text></TouchableOpacity>
-                  </View>
-                )}
-
-                {editData.extensions?.map((ext, i) => (
-                  <View key={i} style={styles.extEditRow}>
-                    <View style={{flex:1}}>
-                      <Text style={{fontWeight:'bold'}}>{ext.reason} (+{ext.days}天)</Text>
-                      <Text style={{fontSize:12, color:'#666'}}>{ext.letterDate} | {ext.letterNumber}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => removeExtension(ext.id)}><Ionicons name="trash" size={20} color={THEME.danger} /></TouchableOpacity>
-                  </View>
-                ))}
-                <Text style={styles.calcResult}>目前累計展延：{editExtDays} 天</Text>
-              </View>
+              <Text style={styles.label}>契約工期 (天)</Text>
+              <TextInput style={styles.input} value={editData.contractDuration?.toString()} onChangeText={t => setEditData({ ...editData, contractDuration: parseInt(t) || 0 })} keyboardType="number-pad" />
 
               <View style={styles.calcBox}>
-                <Text style={styles.calcLabel}>系統自動推算</Text>
-                <Text style={styles.calcValue}>預定竣工日：{editEndDate}</Text>
+                <Text style={styles.calcLabel}>即時計算：預定竣工日</Text>
+                <Text style={styles.calcValue}>{editEndDate}</Text>
               </View>
 
-              {/* 驗收結案 */}
-              <Text style={styles.groupTitle}>驗收結案</Text>
-              <DateInput label="實際竣工日" value={editData.actualCompletionDate} onChange={t => setEditData({...editData, actualCompletionDate: t})} />
-              <DateInput label="驗收日期" value={editData.inspectionDate} onChange={t => setEditData({...editData, inspectionDate: t})} />
-              <DateInput label="複驗日期" value={editData.reinspectionDate} onChange={t => setEditData({...editData, reinspectionDate: t})} />
-              <DateInput label="驗收合格日" value={editData.inspectionPassedDate} onChange={t => setEditData({...editData, inspectionPassedDate: t})} />
+              <Text style={styles.groupHeader}>展延紀錄</Text>
+              {editData.extensions?.map(ext => (
+                <View key={ext.id} style={styles.extEditItem}>
+                  <Text style={{ flex: 1 }}>{ext.reason} ({ext.days}天)</Text>
+                  <TouchableOpacity onPress={() => removeExtension(ext.id)}><Ionicons name="trash" size={20} color={THEME.danger} /></TouchableOpacity>
+                </View>
+              ))}
 
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEdit}>
-                <Text style={styles.saveBtnText}>儲存所有變更</Text>
+              <TouchableOpacity style={styles.addExtTrigger} onPress={() => setShowExtForm(!showExtForm)}>
+                <Text style={{ color: THEME.primary, fontWeight: 'bold' }}>{showExtForm ? '取消新增' : '+ 新增展延紀錄'}</Text>
               </TouchableOpacity>
-              
+
+              {showExtForm && (
+                <View style={styles.addExtBox}>
+                  <View style={styles.row}>
+                    <TextInput style={[styles.smInput, { flex: 1 }]} placeholder="天數" value={newExt.days?.toString()} onChangeText={t => setNewExt({ ...newExt, days: t })} keyboardType="number-pad" />
+                    <TextInput style={[styles.smInput, { flex: 2, marginLeft: 5 }]} placeholder="理由" value={newExt.reason} onChangeText={t => setNewExt({ ...newExt, reason: t })} />
+                  </View>
+                  <View style={[styles.row, { marginTop: 5 }]}>
+                    <TextInput style={[styles.smInput, { flex: 1 }]} placeholder="日期" value={newExt.date} onChangeText={t => setNewExt({ ...newExt, date: t })} />
+                    <TextInput style={[styles.smInput, { flex: 1, marginLeft: 5 }]} placeholder="文號" value={newExt.docNumber} onChangeText={t => setNewExt({ ...newExt, docNumber: t })} />
+                  </View>
+                  <TouchableOpacity style={styles.miniBtn} onPress={addExtension}><Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>加入</Text></TouchableOpacity>
+                </View>
+              )}
+
+              <Text style={styles.groupHeader}>驗收日期</Text>
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.label}>實際竣工</Text>
+                  <TextInput style={styles.input} value={editData.actualCompletionDate} onChangeText={t => setEditData({ ...editData, actualCompletionDate: t })} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label}>驗收日期</Text>
+                  <TextInput style={styles.input} value={editData.inspectionDate} onChangeText={t => setEditData({ ...editData, inspectionDate: t })} />
+                </View>
+              </View>
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.label}>複驗日期</Text>
+                  <TextInput style={styles.input} value={editData.reinspectionDate} onChangeText={t => setEditData({ ...editData, reinspectionDate: t })} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label}>驗收合格</Text>
+                  <TextInput style={styles.input} value={editData.inspectionPassedDate} onChangeText={t => setEditData({ ...editData, inspectionPassedDate: t })} />
+                </View>
+              </View>
+
               <TouchableOpacity style={styles.deleteLink} onPress={handleDelete}>
-                <Text style={{color: THEME.danger}}>刪除此專案</Text>
+                <Text style={{ color: THEME.danger }}>刪除此專案</Text>
               </TouchableOpacity>
-              
-              <View style={{height: 50}} />
+
+              <View style={{ height: 50 }} />
             </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEdit}>
+                <Text style={styles.saveBtnText}>儲存變更</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </ScrollView>
-  );
-}
-
-// 輔助元件
-interface InfoRowProps {
-  label: string;
-  value?: string | number;
-  highlight?: boolean;
-}
-
-const InfoRow = ({ label, value, highlight }: InfoRowProps) => (
-  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-    <Text style={{ color: '#666' }}>{label}</Text>
-    <Text style={{ color: highlight ? '#C69C6D' : '#002147', fontWeight: highlight ? 'bold' : 'normal' }}>{value || '-'}</Text>
-  </View>
-);
-
-interface InputProps {
-  label: string;
-  value?: string;
-  onChange?: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad';
-  style?: StyleProp<ViewStyle>;
-  isSelect?: boolean;
-  options?: Record<string, string>;
-  onSelect?: (key: string) => void;
-}
-
-const Input = ({ label, value, onChange, placeholder, keyboardType, style, isSelect, options, onSelect }: InputProps) => (
-  <View style={[{ marginBottom: 15 }, style]}>
-    <Text style={{ marginBottom: 5, color: '#666', fontWeight: 'bold', fontSize: 13 }}>{label}</Text>
-    {isSelect && options && onSelect ? (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {Object.entries(options).map(([k, v]) => (
-          <TouchableOpacity key={k} onPress={() => onSelect(k)} style={[styles.chip, value === k && styles.chipActive]}>
-            <Text style={[styles.chipText, value === k && styles.chipTextActive]}>{v}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    ) : (
-      <TextInput 
-        style={styles.input} 
-        value={value} 
-        onChangeText={onChange} 
-        placeholder={placeholder} 
-        keyboardType={keyboardType} 
-      />
-    )}
-  </View>
-);
-
-// --- 📅 終極修復的日曆元件 ---
-interface DateInputProps {
-  label: string;
-  value?: string;
-  onChange: (text: string) => void;
-  style?: StyleProp<ViewStyle>;
-}
-
-const DateInput = ({ label, value, onChange, style }: DateInputProps) => {
-  const [show, setShow] = useState(false);
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') setShow(false);
-    if (selectedDate) {
-      const dateString = selectedDate.toISOString().split('T')[0];
-      onChange(dateString);
-    }
-  };
-
-  // 1. Web 版：使用原生 HTML input，保證彈出日曆
-  if (Platform.OS === 'web') {
-    return (
-      <View style={[styles.formGroup, style]}>
-        <Text style={styles.label}>{label}</Text>
-        {createElement('input', {
-          type: 'date',
-          value: value,
-          onChange: (e: any) => onChange(e.target.value),
-          style: {
-            padding: 12,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: THEME.border,
-            borderStyle: 'solid',
-            backgroundColor: THEME.inputBg,
-            fontSize: 16,
-            color: '#000',
-            width: '100%',
-            height: 45,
-            boxSizing: 'border-box',
-            fontFamily: 'System'
-          }
-        })}
-      </View>
-    );
-  }
-
-  // 2. App 版：使用原生彈窗
-  return (
-    <View style={[styles.formGroup, style]}>
-      <Text style={styles.label}>{label}</Text>
-      <TouchableOpacity onPress={() => setShow(true)} style={styles.dateButton}>
-        <Text style={[styles.dateText, !value && { color: '#999' }]}>
-          {value || '選擇日期'}
-        </Text>
-        <Ionicons name="calendar-outline" size={20} color="#666" />
-      </TouchableOpacity>
-      
-      {show && (
-        <DateTimePicker
-          value={value ? new Date(value) : new Date()}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={handleDateChange}
-        />
-      )}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.background, padding: 20 },
-  header: { marginBottom: 20, flexDirection:'row', justifyContent:'space-between', alignItems:'center' },
-  title: { fontSize: 24, fontWeight: 'bold', color: THEME.text, flex: 1 },
-  badge: { backgroundColor: '#E3F2FD', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15 },
-  badgeText: { color: THEME.text, fontWeight: 'bold', fontSize: 12 },
-  section: { marginBottom: 15, backgroundColor: THEME.cardBg, padding: 15, borderRadius: 12, borderWidth: 1, borderColor: THEME.border },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: THEME.accent, marginBottom: 12 },
-  label: { marginBottom: 5, color: '#666', fontWeight: 'bold', fontSize: 13 },
+  container: { flex: 1, backgroundColor: THEME.background },
+  headerArea: { backgroundColor: THEME.headerBg, paddingTop: Platform.OS === 'android' ? 25 : 0 },
+  navHeader: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15 },
+  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  backBtn: { padding: 5 },
+  content: { padding: 20 },
+
+  titleSection: { marginBottom: 20 },
+  projectTitle: { fontSize: 24, fontWeight: 'bold', color: '#002147', marginBottom: 5 },
+  statusTag: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15 },
+
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 20, marginBottom: 15, elevation: 2 },
+  cardTitle: { fontSize: 16, fontWeight: 'bold', color: THEME.primary, marginBottom: 15, borderLeftWidth: 3, borderLeftColor: THEME.primary, paddingLeft: 10 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  infoLabel: { color: '#666' },
+  infoValue: { color: '#333', fontWeight: '500' },
   divider: { height: 1, backgroundColor: '#eee', marginVertical: 10 },
-  noData: { color: '#999', fontStyle: 'italic', fontSize: 13 },
-  extCard: { backgroundColor: '#F9F9F9', padding: 10, borderRadius: 8, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: THEME.accent },
-  extHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  extReason: { fontWeight: 'bold', color: THEME.text },
-  extDays: { color: THEME.accent, fontWeight: 'bold' },
-  extMeta: { fontSize: 12, color: '#666' },
-  editBtn: { backgroundColor: THEME.text, padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
-  btnText: { color: '#fff', fontWeight: 'bold' },
-  modalContent: { flex: 1, backgroundColor: '#fff', marginTop: 40, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderColor: '#eee', alignItems: 'center' },
+
+  extRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f9f9f9' },
+  extReason: { fontWeight: 'bold', color: '#333' },
+  extMeta: { fontSize: 12, color: '#999', marginTop: 2 },
+  extDays: { color: THEME.primary, fontWeight: 'bold' },
+
+  editBtn: { backgroundColor: '#002147', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+  editBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', height: '90%', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  modalHeader: { padding: 20, borderBottomWidth: 1, borderColor: '#eee', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalTitle: { fontSize: 18, fontWeight: 'bold' },
-  groupTitle: { fontSize: 16, fontWeight: 'bold', color: THEME.text, marginTop: 10, marginBottom: 15, backgroundColor: '#F0F0F0', padding: 8, borderRadius: 4 },
-  input: { backgroundColor: THEME.inputBg, padding: 12, borderRadius: 8, fontSize: 16 },
+  modalBody: { flex: 1, padding: 20 },
+  modalFooter: { padding: 20, borderTopWidth: 1, borderColor: '#eee' },
+
+  groupHeader: { fontSize: 14, fontWeight: 'bold', color: '#999', marginTop: 20, marginBottom: 10, backgroundColor: '#f0f0f0', padding: 5 },
+  label: { fontSize: 14, color: '#333', marginBottom: 5, marginTop: 10, fontWeight: 'bold' },
+  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 16, backgroundColor: '#F9F9F9' },
   row: { flexDirection: 'row' },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: THEME.inputBg, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: THEME.border },
-  chipActive: { backgroundColor: THEME.accent, borderColor: THEME.accent },
-  chipText: { color: '#666' },
-  chipTextActive: { color: '#000', fontWeight: 'bold' },
-  extSection: { marginBottom: 20, padding: 10, borderWidth: 1, borderColor: '#eee', borderRadius: 8 },
-  addExtForm: { backgroundColor: '#FAFAFA', padding: 10, borderRadius: 8, marginBottom: 10, marginTop: 10 },
-  addBtn: { backgroundColor: THEME.accent, padding: 10, borderRadius: 8, alignItems: 'center' },
-  addBtnText: { color: '#000', fontWeight: 'bold' },
-  extEditRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  calcResult: { textAlign: 'right', marginTop: 10, color: THEME.accent, fontWeight: 'bold' },
-  calcBox: { backgroundColor: '#E3F2FD', padding: 15, borderRadius: 8, marginBottom: 20, alignItems: 'center' },
-  calcLabel: { fontSize: 12, color: '#555', marginBottom: 4 },
-  calcValue: { fontSize: 18, fontWeight: 'bold', color: '#002147' },
-  saveBtn: { backgroundColor: THEME.accent, padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
-  saveBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
-  deleteLink: { alignItems: 'center', marginTop: 20, padding: 10 },
-  dateButton: { backgroundColor: THEME.inputBg, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: THEME.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 45 },
-  dateText: { fontSize: 16, color: '#000' },
-  formGroup: { marginBottom: 15 }
+
+  calcBox: { backgroundColor: '#E3F2FD', padding: 15, borderRadius: 8, marginTop: 15, alignItems: 'center' },
+  calcLabel: { fontSize: 12, color: '#666' },
+  calcValue: { fontSize: 20, fontWeight: 'bold', color: '#002147', marginTop: 5 },
+
+  saveBtn: { backgroundColor: THEME.primary, padding: 15, borderRadius: 10, alignItems: 'center' },
+  saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  deleteLink: { alignItems: 'center', marginTop: 20 },
+
+  // Ext Edit
+  extEditItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
+  addExtTrigger: { padding: 10, alignItems: 'center', marginTop: 5 },
+  addExtBox: { backgroundColor: '#f9f9f9', padding: 10, borderRadius: 8, marginTop: 5 },
+  smInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 5, padding: 8, fontSize: 14 },
+  miniBtn: { backgroundColor: '#555', padding: 8, borderRadius: 5, alignItems: 'center', marginTop: 8, alignSelf: 'flex-end' }
 });

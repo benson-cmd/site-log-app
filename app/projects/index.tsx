@@ -3,7 +3,7 @@ import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../../context/UserContext';
 import { useProjects, Project, Extension } from '../../context/ProjectContext';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 
 const THEME = {
   primary: '#C69C6D',
@@ -25,7 +25,8 @@ export default function ProjectsScreen() {
   // Add Project Modal States
   const [isAddModalVisible, setAddModalVisible] = useState(false);
   const [newProject, setNewProject] = useState<Partial<Project>>({
-    name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: []
+    name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [],
+    awardDate: '', actualCompletionDate: '', inspectionDate: '', reinspectionDate: '', inspectionPassedDate: ''
   });
 
   // Extension Inputs
@@ -104,11 +105,15 @@ export default function ProjectsScreen() {
       status: 'planning', // Default
       startDate: newProject.startDate,
       contractDuration: parseInt(newProject.contractDuration?.toString() || '0'),
-      extensions: newProject.extensions || []
+      extensions: newProject.extensions || [],
+      awardDate: newProject.awardDate,
+      inspectionDate: newProject.inspectionDate,
+      reinspectionDate: newProject.reinspectionDate
     } as any);
 
     setAddModalVisible(false);
-    setNewProject({ name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [] });
+    // Reset Form
+    setNewProject({ name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [], awardDate: '', inspectionDate: '', reinspectionDate: '' });
     Alert.alert('成功', '專案已新增');
   };
 
@@ -164,6 +169,7 @@ export default function ProjectsScreen() {
               <Text style={styles.projectTitle}>{item.name}</Text>
               <Text style={styles.projectInfo}>📍 {item.address}</Text>
               <Text style={styles.projectInfo}>👷 主任：{item.manager}</Text>
+              {item.awardDate && <Text style={styles.projectInfo}>📅 決標：{item.awardDate}</Text>}
 
               {/* Progress Bar */}
               <View style={styles.progressContainer}>
@@ -201,6 +207,7 @@ export default function ProjectsScreen() {
             </View>
 
             <ScrollView style={styles.formScroll}>
+              <Text style={styles.groupHeader}>基本資料</Text>
               <Text style={styles.label}>專案名稱 *</Text>
               <TextInput style={styles.input} value={newProject.name} onChangeText={t => setNewProject({ ...newProject, name: t })} placeholder="輸入專案名稱" />
 
@@ -210,15 +217,26 @@ export default function ProjectsScreen() {
               <Text style={styles.label}>工地主任</Text>
               <TextInput style={styles.input} value={newProject.manager} onChangeText={t => setNewProject({ ...newProject, manager: t })} placeholder="輸入負責人姓名" />
 
+              <Text style={styles.groupHeader}>時程管理</Text>
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.label}>開工日期 (YYYY-MM-DD)</Text>
-                  <TextInput style={styles.input} value={newProject.startDate} onChangeText={t => setNewProject({ ...newProject, startDate: t })} placeholder="2025-01-01" />
+                  <Text style={styles.label}>決標日期</Text>
+                  <TextInput style={styles.input} value={newProject.awardDate} onChangeText={t => setNewProject({ ...newProject, awardDate: t })} placeholder="YYYY-MM-DD" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>契約工期 (天)</Text>
-                  <TextInput style={styles.input} value={newProject.contractDuration?.toString()} onChangeText={t => setNewProject({ ...newProject, contractDuration: parseInt(t) || 0 })} keyboardType="number-pad" placeholder="600" />
+                  <Text style={styles.label}>開工日期 *</Text>
+                  <TextInput style={styles.input} value={newProject.startDate} onChangeText={t => setNewProject({ ...newProject, startDate: t })} placeholder="YYYY-MM-DD" />
                 </View>
+              </View>
+
+              <Text style={styles.label}>契約工期 (天)</Text>
+              <TextInput style={styles.input} value={newProject.contractDuration?.toString()} onChangeText={t => setNewProject({ ...newProject, contractDuration: parseInt(t) || 0 })} keyboardType="number-pad" placeholder="600" />
+
+              {/* Auto Calculation Result */}
+              <View style={styles.calcResultBox}>
+                <Text style={styles.calcLabel}>預定竣工日 (自動計算)</Text>
+                <Text style={styles.calcValue}>{completionDate}</Text>
+                <Text style={styles.calcFormula}>( 開工日 + 工期 + 展延天數 - 1 )</Text>
               </View>
 
               {/* Extension Logic */}
@@ -249,11 +267,16 @@ export default function ProjectsScreen() {
                 </View>
               </View>
 
-              {/* Auto Calculation Result */}
-              <View style={styles.calcResultBox}>
-                <Text style={styles.calcLabel}>預定竣工日 (自動計算)</Text>
-                <Text style={styles.calcValue}>{completionDate}</Text>
-                <Text style={styles.calcFormula}>( 開工日 + 工期 + 展延天數 - 1 )</Text>
+              <Text style={styles.groupHeader}>驗收日期</Text>
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.label}>驗收日期</Text>
+                  <TextInput style={styles.input} value={newProject.inspectionDate} onChangeText={t => setNewProject({ ...newProject, inspectionDate: t })} placeholder="YYYY-MM-DD" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>複驗日期</Text>
+                  <TextInput style={styles.input} value={newProject.reinspectionDate} onChangeText={t => setNewProject({ ...newProject, reinspectionDate: t })} placeholder="YYYY-MM-DD" />
+                </View>
               </View>
 
             </ScrollView>
@@ -347,12 +370,13 @@ const styles = StyleSheet.create({
   calcResultBox: { marginTop: 20, backgroundColor: '#002147', padding: 15, borderRadius: 10, alignItems: 'center' },
   calcLabel: { color: '#aaa', fontSize: 12 },
   calcValue: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginVertical: 5 },
-  calcFormula: { color: '#ccc', fontSize: 10 }, // fix color contrast if needed, but 666 on dark blue is hard to read. Let's fix.
+  calcFormula: { color: '#ccc', fontSize: 10 },
   modalFooter: { marginTop: 10, borderTopWidth: 1, borderColor: '#eee', paddingTop: 10 },
   submitBtn: { backgroundColor: THEME.primary, padding: 15, borderRadius: 10, alignItems: 'center' },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 
   // Helper
+  groupHeader: { fontSize: 13, fontWeight: 'bold', color: '#999', backgroundColor: '#f0f0f0', padding: 5, marginTop: 15 },
   menuOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)' },
   sideMenu: { width: '80%', backgroundColor: '#002147', height: '100%' },
   menuHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
