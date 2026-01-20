@@ -29,7 +29,7 @@ export default function ProjectsScreen() {
   const router = useRouter();
   const { user, logout } = useUser();
   const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
-  
+
   // 控制選單開關
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -42,17 +42,17 @@ export default function ProjectsScreen() {
 
   // 選單項目組件 (依照您的截圖設計)
   const MenuItem = ({ icon, label, onPress, isLogout = false, isActive = false }: any) => (
-    <TouchableOpacity 
-      style={[styles.menuItem, isActive && styles.menuItemActive]} 
+    <TouchableOpacity
+      style={[styles.menuItem, isActive && styles.menuItemActive]}
       onPress={onPress}
     >
-      <Ionicons 
-        name={icon} 
-        size={24} 
-        color={isLogout ? '#FF6B6B' : (isActive ? THEME.primary : '#fff')} 
+      <Ionicons
+        name={icon}
+        size={24}
+        color={isLogout ? '#FF6B6B' : (isActive ? THEME.primary : '#fff')}
       />
       <Text style={[
-        styles.menuItemText, 
+        styles.menuItemText,
         isLogout && { color: '#FF6B6B' },
         isActive && { color: THEME.primary, fontWeight: 'bold' }
       ]}>
@@ -62,8 +62,8 @@ export default function ProjectsScreen() {
   );
 
   const renderItem = ({ item }: { item: Project }) => (
-    <TouchableOpacity 
-      style={styles.card} 
+    <TouchableOpacity
+      style={styles.card}
       onPress={() => router.push(`/projects/${item.id}`)}
     >
       <View style={styles.cardHeader}>
@@ -88,8 +88,8 @@ export default function ProjectsScreen() {
               <Ionicons name="menu" size={32} color="#fff" />
             </TouchableOpacity>
             <View style={styles.brandContainer}>
-              <Image 
-                source={require('../../assets/logo.png')} 
+              <Image
+                source={require('../../assets/logo.png')}
                 style={styles.headerLogo}
                 resizeMode="contain"
               />
@@ -126,18 +126,18 @@ export default function ProjectsScreen() {
       </View>
 
       {/* ⭐️ 修正後的左側深藍色選單 */}
-      <Modal 
-        visible={menuVisible} 
+      <Modal
+        visible={menuVisible}
         animationType="none" // 改成 none 避免動畫造成視覺錯位，或改用 fade
-        transparent={true} 
+        transparent={true}
         onRequestClose={() => setMenuVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          
+
           {/* 1. 左側選單 (Side Menu) - 放在第一個就是左邊 */}
           <View style={styles.sideMenu}>
             <SafeAreaView style={{ flex: 1 }}>
-              
+
               {/* 選單頂部 */}
               <View style={styles.menuHeader}>
                 <Ionicons name="home" size={28} color="#fff" />
@@ -151,58 +151,58 @@ export default function ProjectsScreen() {
               <View style={styles.menuDivider} />
 
               {/* 選單項目 (依照截圖順序) */}
-              <MenuItem 
-                icon="folder-open" 
-                label="專案列表" 
+              <MenuItem
+                icon="folder-open"
+                label="專案列表"
                 isActive={true} // 目前在專案列表頁
-                onPress={() => setMenuVisible(false)} 
+                onPress={() => setMenuVisible(false)}
               />
-              <MenuItem 
-                icon="clipboard" 
-                label="施工紀錄" 
-                onPress={() => { setMenuVisible(false); Alert.alert('提示', '功能開發中'); }} 
+              <MenuItem
+                icon="clipboard"
+                label="施工紀錄"
+                onPress={() => { setMenuVisible(false); router.push('/logs'); }}
               />
-              <MenuItem 
-                icon="people" 
-                label="人員管理" 
-                onPress={() => { setMenuVisible(false); router.push('/personnel'); }} 
+              <MenuItem
+                icon="people"
+                label="人員管理"
+                onPress={() => { setMenuVisible(false); router.push('/personnel'); }}
               />
-              <MenuItem 
-                icon="library" 
-                label="SOP資料庫" 
-                onPress={() => { setMenuVisible(false); router.push('/sop'); }} 
+              <MenuItem
+                icon="library"
+                label="SOP資料庫"
+                onPress={() => { setMenuVisible(false); router.push('/sop'); }}
               />
-              <MenuItem 
-                icon="calendar" 
-                label="行事曆" 
-                onPress={() => { setMenuVisible(false); Alert.alert('提示', '功能開發中'); }} 
+              <MenuItem
+                icon="calendar"
+                label="行事曆"
+                onPress={() => { setMenuVisible(false); router.push('/calendar'); }}
               />
-              <MenuItem 
-                icon="person-circle" 
-                label="我的檔案" 
-                onPress={() => { setMenuVisible(false); Alert.alert('提示', '功能開發中'); }} 
+              <MenuItem
+                icon="person-circle"
+                label="我的檔案"
+                onPress={() => { setMenuVisible(false); router.push('/profile'); }}
               />
 
               <View style={{ flex: 1 }} />
-              
+
               <View style={styles.menuDivider} />
-              <MenuItem 
-                icon="log-out-outline" 
-                label="登出系統" 
-                isLogout 
-                onPress={handleLogout} 
+              <MenuItem
+                icon="log-out-outline"
+                label="登出系統"
+                isLogout
+                onPress={handleLogout}
               />
-              
+
             </SafeAreaView>
           </View>
 
           {/* 2. 右側遮罩 (Backdrop) - 放在第二個就會填滿右邊 */}
-          <TouchableOpacity 
-            style={styles.modalBackdrop} 
-            onPress={() => setMenuVisible(false)} 
-            activeOpacity={1} 
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            onPress={() => setMenuVisible(false)}
+            activeOpacity={1}
           />
-        
+
         </View>
       </Modal>
     </View>
@@ -231,16 +231,16 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', marginTop: 100 },
   emptyText: { marginTop: 10, color: '#999', fontSize: 16 },
   fab: { position: 'absolute', right: 20, bottom: 30, width: 60, height: 60, borderRadius: 30, backgroundColor: THEME.primary, justifyContent: 'center', alignItems: 'center', elevation: 8, zIndex: 999 },
-  
+
   // --- 關鍵：側邊選單樣式 (Left Side Menu) ---
-  modalOverlay: { 
-    flex: 1, 
+  modalOverlay: {
+    flex: 1,
     flexDirection: 'row', // ⭐️ 讓選單(左)和遮罩(右)並排
   },
-  sideMenu: { 
+  sideMenu: {
     width: 280, // 選單寬度固定
     backgroundColor: '#002147', // ⭐️ 深藍色背景
-    height: '100%', 
+    height: '100%',
     padding: 20,
     paddingTop: Platform.OS === 'android' ? 50 : 60, // 避開狀態列
     shadowColor: "#000",
@@ -249,20 +249,20 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  modalBackdrop: { 
+  modalBackdrop: {
     flex: 1, // 填滿剩餘空間
     backgroundColor: 'rgba(0,0,0,0.5)' // 半透明黑底
   },
-  
+
   // 選單內部樣式
   menuHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 10 },
   menuTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginLeft: 15 },
   menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 10 },
-  
-  menuItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 15, 
+
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
     paddingHorizontal: 15,
     borderRadius: 8,
     marginBottom: 5
@@ -270,10 +270,10 @@ const styles = StyleSheet.create({
   menuItemActive: {
     backgroundColor: 'rgba(198, 156, 109, 0.2)', // 選中時的淺金色背景
   },
-  menuItemText: { 
-    fontSize: 18, 
-    marginLeft: 20, 
-    color: '#fff', 
-    fontWeight: '500' 
+  menuItemText: {
+    fontSize: 18,
+    marginLeft: 20,
+    color: '#fff',
+    fontWeight: '500'
   }
 });
