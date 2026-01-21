@@ -1,8 +1,10 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, StatusBar, Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useUser } from '../../context/UserContext';
 import { useProjects, Project, Extension } from '../../context/ProjectContext';
+import { usePersonnel } from '../../context/PersonnelContext';
 import { useState, useMemo } from 'react';
 
 const THEME = {
@@ -17,6 +19,7 @@ export default function ProjectsScreen() {
   const router = useRouter();
   const { user, logout } = useUser();
   const { projects, addProject } = useProjects();
+  const { personnelList } = usePersonnel();
 
   // States
   const [menuVisible, setMenuVisible] = useState(false);
@@ -31,6 +34,58 @@ export default function ProjectsScreen() {
 
   // Extension Inputs
   const [extForm, setExtForm] = useState({ days: '', date: '', docNumber: '', reason: '' });
+
+  // Manager Dropdown
+  const [showManagerPicker, setShowManagerPicker] = useState(false);
+  const managers = useMemo(() => personnelList.map(p => p.name), [personnelList]);
+
+  // Date Picker Logic
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateFieldTarget, setDateFieldTarget] = useState<'award' | 'start' | 'actual' | 'inspection' | 'reinspection' | 'passed' | 'extension'>('start');
+  const [tempDate, setTempDate] = useState(new Date());
+
+  const openDatePicker = (field: typeof dateFieldTarget) => {
+    setDateFieldTarget(field);
+    let initialDate = new Date();
+    // Try to parse existing value
+    try {
+      if (field === 'award' && newProject.awardDate) initialDate = new Date(newProject.awardDate);
+      else if (field === 'start' && newProject.startDate) initialDate = new Date(newProject.startDate);
+      else if (field === 'actual' && newProject.actualCompletionDate) initialDate = new Date(newProject.actualCompletionDate);
+      else if (field === 'inspection' && newProject.inspectionDate) initialDate = new Date(newProject.inspectionDate);
+      else if (field === 'reinspection' && newProject.reinspectionDate) initialDate = new Date(newProject.reinspectionDate);
+      else if (field === 'extension' && extForm.date) initialDate = new Date(extForm.date);
+    } catch (e) { }
+
+    setTempDate(initialDate);
+    setShowDatePicker(true);
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (selectedDate) {
+      setTempDate(selectedDate);
+      if (Platform.OS === 'android') confirmDate(selectedDate);
+    }
+  };
+
+  const confirmDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    if (dateFieldTarget === 'extension') {
+      setExtForm(prev => ({ ...prev, date: dateStr }));
+    } else if (dateFieldTarget === 'award') {
+      setNewProject(prev => ({ ...prev, awardDate: dateStr }));
+    } else if (dateFieldTarget === 'start') {
+      setNewProject(prev => ({ ...prev, startDate: dateStr }));
+    } else if (dateFieldTarget === 'actual') {
+      setNewProject(prev => ({ ...prev, actualCompletionDate: dateStr }));
+    } else if (dateFieldTarget === 'inspection') {
+      setNewProject(prev => ({ ...prev, inspectionDate: dateStr }));
+    } else if (dateFieldTarget === 'reinspection') {
+      setNewProject(prev => ({ ...prev, reinspectionDate: dateStr }));
+    }
+    if (Platform.OS === 'ios') setShowDatePicker(false);
+  };
 
   // Filter Logic
   const filteredProjects = useMemo(() => {
@@ -47,8 +102,8 @@ export default function ProjectsScreen() {
 
   // Add Item Logic
   const handleAddExtension = () => {
-    if (!extForm.days || !extForm.reason) {
-      Alert.alert('提示', '請至少填寫天數與理由');
+    if (!extForm.days || !extForm.reason || !extForm.date) {
+      Alert.alert('提示', '請填寫天數、公文日期與理由');
       return;
     }
     const newExt: Extension = {
@@ -107,13 +162,15 @@ export default function ProjectsScreen() {
       contractDuration: parseInt(newProject.contractDuration?.toString() || '0'),
       extensions: newProject.extensions || [],
       awardDate: newProject.awardDate,
+      actualCompletionDate: newProject.actualCompletionDate,
       inspectionDate: newProject.inspectionDate,
       reinspectionDate: newProject.reinspectionDate
     } as any);
 
     setAddModalVisible(false);
     // Reset Form
-    setNewProject({ name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [], awardDate: '', inspectionDate: '', reinspectionDate: '' });
+    setNewProject({ name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [], awardDate: '', actualCompletionDate: '', inspectionDate: '', reinspectionDate: '' });
+    setExtForm({ days: '', date: '', docNumber: '', reason: '' });
     Alert.alert('成功', '專案已新增');
   };
 
@@ -215,29 +272,40 @@ export default function ProjectsScreen() {
               <TextInput style={styles.input} value={newProject.address} onChangeText={t => setNewProject({ ...newProject, address: t })} placeholder="輸入專案地址" />
 
               <Text style={styles.label}>工地主任</Text>
-              <TextInput style={styles.input} value={newProject.manager} onChangeText={t => setNewProject({ ...newProject, manager: t })} placeholder="輸入負責人姓名" />
+              <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowManagerPicker(!showManagerPicker)}>
+                <Text style={styles.dropdownBtnText}>{newProject.manager || '請選擇工地主任'}</Text>
+                <Ionicons name="chevron-down" size={20} color="#666" />
+              </TouchableOpacity>
+              {showManagerPicker && (
+                <View style={styles.dropdownList}>
+                  {managers.map((mgr, idx) => (
+                    <TouchableOpacity key={idx} style={styles.dropdownItem} onPress={() => { setNewProject({ ...newProject, manager: mgr }); setShowManagerPicker(false); }}>
+                      <Text style={styles.dropdownItemText}>{mgr}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               <Text style={styles.groupHeader}>時程管理</Text>
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.label}>決標日期</Text>
-                  <TextInput style={styles.input} value={newProject.awardDate} onChangeText={t => setNewProject({ ...newProject, awardDate: t })} placeholder="YYYY-MM-DD" />
+                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('award')}>
+                    <Text style={styles.dateBtnText}>{newProject.awardDate || '選擇日期'}</Text>
+                    <Ionicons name="calendar-outline" size={18} color="#666" />
+                  </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>開工日期 *</Text>
-                  <TextInput style={styles.input} value={newProject.startDate} onChangeText={t => setNewProject({ ...newProject, startDate: t })} placeholder="YYYY-MM-DD" />
+                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('start')}>
+                    <Text style={styles.dateBtnText}>{newProject.startDate || '選擇日期'}</Text>
+                    <Ionicons name="calendar-outline" size={18} color="#666" />
+                  </TouchableOpacity>
                 </View>
               </View>
 
               <Text style={styles.label}>契約工期 (天)</Text>
               <TextInput style={styles.input} value={newProject.contractDuration?.toString()} onChangeText={t => setNewProject({ ...newProject, contractDuration: parseInt(t) || 0 })} keyboardType="number-pad" placeholder="600" />
-
-              {/* Auto Calculation Result */}
-              <View style={styles.calcResultBox}>
-                <Text style={styles.calcLabel}>預定竣工日 (自動計算)</Text>
-                <Text style={styles.calcValue}>{completionDate}</Text>
-                <Text style={styles.calcFormula}>( 開工日 + 工期 + 展延天數 - 1 )</Text>
-              </View>
 
               {/* Extension Logic */}
               <View style={styles.extensionSection}>
@@ -255,7 +323,9 @@ export default function ProjectsScreen() {
                 <View style={styles.addExtBox}>
                   <View style={styles.row}>
                     <TextInput style={[styles.smallInput, { flex: 1 }]} placeholder="天數" keyboardType="number-pad" value={extForm.days} onChangeText={t => setExtForm({ ...extForm, days: t })} />
-                    <TextInput style={[styles.smallInput, { flex: 2, marginLeft: 5 }]} placeholder="公文日期" value={extForm.date} onChangeText={t => setExtForm({ ...extForm, date: t })} />
+                    <TouchableOpacity style={[styles.smalldateBtn, { flex: 2, marginLeft: 5 }]} onPress={() => openDatePicker('extension')}>
+                      <Text style={{ color: extForm.date ? '#333' : '#999' }}>{extForm.date || '公文日期'}</Text>
+                    </TouchableOpacity>
                   </View>
                   <View style={[styles.row, { marginTop: 5 }]}>
                     <TextInput style={[styles.smallInput, { flex: 1 }]} placeholder="文號" value={extForm.docNumber} onChangeText={t => setExtForm({ ...extForm, docNumber: t })} />
@@ -267,18 +337,40 @@ export default function ProjectsScreen() {
                 </View>
               </View>
 
+              {/* Auto Calculation Result & Actual Completion */}
+              <View style={styles.calcRow}>
+                <View style={[styles.calcResultBox, { flex: 1, marginRight: 5 }]}>
+                  <Text style={styles.calcLabel}>預定竣工日 (自動)</Text>
+                  <Text style={styles.calcValue}>{completionDate}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label} numberOfLines={1}>實際竣工日</Text>
+                  <TouchableOpacity style={[styles.dateBtn, { backgroundColor: '#E8F5E9', borderColor: '#81C784' }]} onPress={() => openDatePicker('actual')}>
+                    <Text style={styles.dateBtnText}>{newProject.actualCompletionDate || '選擇日期'}</Text>
+                    <Ionicons name="checkmark-done-circle-outline" size={18} color="#2E7D32" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               <Text style={styles.groupHeader}>驗收日期</Text>
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.label}>驗收日期</Text>
-                  <TextInput style={styles.input} value={newProject.inspectionDate} onChangeText={t => setNewProject({ ...newProject, inspectionDate: t })} placeholder="YYYY-MM-DD" />
+                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('inspection')}>
+                    <Text style={styles.dateBtnText}>{newProject.inspectionDate || '選擇日期'}</Text>
+                    <Ionicons name="calendar-outline" size={18} color="#666" />
+                  </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>複驗日期</Text>
-                  <TextInput style={styles.input} value={newProject.reinspectionDate} onChangeText={t => setNewProject({ ...newProject, reinspectionDate: t })} placeholder="YYYY-MM-DD" />
+                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('reinspection')}>
+                    <Text style={styles.dateBtnText}>{newProject.reinspectionDate || '選擇日期'}</Text>
+                    <Ionicons name="calendar-outline" size={18} color="#666" />
+                  </TouchableOpacity>
                 </View>
               </View>
 
+              <View style={{ height: 100 }} />
             </ScrollView>
 
             <View style={styles.modalFooter}>
@@ -286,6 +378,35 @@ export default function ProjectsScreen() {
                 <Text style={styles.submitBtnText}>確認新增專案</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Date Picker Component */}
+            {showDatePicker && (
+              Platform.OS === 'ios' ? (
+                <Modal transparent animationType="fade">
+                  <View style={styles.iosDatePickerContainer}>
+                    <View style={styles.iosDatePickerContent}>
+                      <DateTimePicker
+                        value={tempDate}
+                        mode="date"
+                        display="spinner"
+                        onChange={onDateChange}
+                        style={{ height: 150 }}
+                      />
+                      <TouchableOpacity style={styles.iosConfirmBtn} onPress={() => confirmDate(tempDate)}>
+                        <Text style={styles.iosConfirmText}>確認</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
+              ) : (
+                <DateTimePicker
+                  value={tempDate}
+                  mode="date"
+                  display="default"
+                  onChange={onDateChange}
+                />
+              )
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -355,6 +476,18 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16 },
   row: { flexDirection: 'row' },
   smallInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, fontSize: 13 },
+  smalldateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, justifyContent: 'center' },
+
+  // Date Btn
+  dateBtn: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dateBtnText: { color: '#333', fontSize: 16 },
+
+  // Dropdown
+  dropdownBtn: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dropdownBtnText: { fontSize: 16, color: '#333' },
+  dropdownList: { borderWidth: 1, borderColor: '#eee', borderRadius: 8, marginTop: 5, backgroundColor: '#fff', elevation: 3 },
+  dropdownItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  dropdownItemText: { fontSize: 16, color: '#333' },
 
   // Extension
   extensionSection: { marginTop: 25, backgroundColor: '#F0F4F8', padding: 15, borderRadius: 10 },
@@ -367,13 +500,19 @@ const styles = StyleSheet.create({
   removeExt: { position: 'absolute', top: 10, right: 10 },
 
   // Calc Result
-  calcResultBox: { marginTop: 20, backgroundColor: '#002147', padding: 15, borderRadius: 10, alignItems: 'center' },
+  calcRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20 },
+  calcResultBox: { backgroundColor: '#002147', padding: 15, borderRadius: 10, alignItems: 'center' },
   calcLabel: { color: '#aaa', fontSize: 12 },
-  calcValue: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginVertical: 5 },
-  calcFormula: { color: '#ccc', fontSize: 10 },
+  calcValue: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginVertical: 5 },
   modalFooter: { marginTop: 10, borderTopWidth: 1, borderColor: '#eee', paddingTop: 10 },
   submitBtn: { backgroundColor: THEME.primary, padding: 15, borderRadius: 10, alignItems: 'center' },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+
+  // iOS DatePicker
+  iosDatePickerContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
+  iosDatePickerContent: { backgroundColor: '#fff', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  iosConfirmBtn: { backgroundColor: THEME.primary, padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+  iosConfirmText: { color: '#fff', fontWeight: 'bold' },
 
   // Helper
   groupHeader: { fontSize: 13, fontWeight: 'bold', color: '#999', backgroundColor: '#f0f0f0', padding: 5, marginTop: 15 },
