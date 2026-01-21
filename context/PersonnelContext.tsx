@@ -1,6 +1,8 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
-import { db } from '../src/lib/firebase';
+import { db, firebaseConfig } from '../src/lib/firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { initializeApp, getApp, FirebaseApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 
 export interface Education {
     school: string;
@@ -27,6 +29,7 @@ export interface Personnel {
     education?: Education[]; // 學歷
     experience?: Experience[]; // 經歷
     initialPassword?: string; // 初始密碼 (ROC Birthday)
+    password?: string; // 自訂密碼
 }
 
 interface PersonnelContextType {
@@ -71,7 +74,31 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
 
     const addPersonnel = async (person: Omit<Personnel, 'id'>) => {
         try {
+            // 1. Add to Firestore
             await addDoc(collection(db, "personnel"), person);
+
+            // 2. Create in Firebase Auth (Secondary App)
+            if (person.email && person.initialPassword) {
+                const appName = 'SecondaryAuthApp';
+                let secondaryApp: FirebaseApp;
+                try {
+                    secondaryApp = getApp(appName);
+                } catch (e) {
+                    secondaryApp = initializeApp(firebaseConfig, appName);
+                }
+
+                const secondaryAuth = getAuth(secondaryApp);
+                try {
+                    await createUserWithEmailAndPassword(secondaryAuth, person.email, person.initialPassword);
+                    await signOut(secondaryAuth); // Ensure clean state
+                    console.log(`Created Firebase Auth user for ${person.email}`);
+                } catch (authErr: any) {
+                    console.error("Error creating Firebase Auth user (non-fatal):", authErr);
+                    // We don't throw here to avoid rolling back the Firestore addition, 
+                    // or we could throw if strict consistency is required.
+                }
+            }
+
         } catch (e: any) {
             console.error("Error adding personnel: ", e);
             throw e;

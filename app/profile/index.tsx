@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Alert, Modal, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Alert, Modal, TextInput, Platform, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -8,7 +8,7 @@ import { usePersonnel, Personnel } from '../../context/PersonnelContext';
 export default function ProfileScreen() {
   const router = useRouter();
   const { user } = useUser();
-  const { getPersonnelByEmail, updatePersonnel } = usePersonnel();
+  const { getPersonnelByEmail, updatePersonnel, personnelList } = usePersonnel();
 
   const [profile, setProfile] = useState<Personnel | null>(null);
 
@@ -20,13 +20,53 @@ export default function ProfileScreen() {
   // Password State
   const [pwdForm, setPwdForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
 
+  // Modal State
+  const [isEditModalVisible, setEditModalVisible] = useState(false);
+  const [editForm, setEditForm] = useState<Personnel | null>(null);
+
+  useEffect(() => {
+    if (user && user.email) {
+      const p = getPersonnelByEmail(user.email);
+      if (p) {
+        setProfile(p);
+      }
+    }
+  }, [user, getPersonnelByEmail, personnelList]);
+
+  // Loading State
+  if (!user || (!profile && !getPersonnelByEmail(user?.email || ''))) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#002147" />
+        <Text style={{ marginTop: 10, color: '#666' }}>載入個人資料中...</Text>
+      </View>
+    );
+  }
+
+  // Handle case where profile is not found after loading
+  // Ensure we display the latest data from context if profile state is stale or null
+  const activeProfile = getPersonnelByEmail(user?.email || '') || profile;
+
+  if (!activeProfile) {
+    return (
+      <View style={styles.container}>
+        <SafeAreaView><Text style={{ textAlign: 'center', marginTop: 100, color: '#999' }}>找不到使用者資料 ({user?.email})</Text></SafeAreaView>
+      </View>
+    )
+  }
+
+  // Use activeProfile for rendering title/header
+  // Note: We use 'profile' state for other things, but let's sync them up.
+  // Actually, let's just use activeProfile for the render to avoid sync issues.
+  const displayProfile = activeProfile;
+
   const handleEditOpen = () => {
-    if (profile) {
+    if (displayProfile) {
       setEditForm({
-        ...profile,
-        licenses: profile.licenses || [],
-        education: profile.education || [],
-        experience: profile.experience || []
+        ...displayProfile,
+        licenses: displayProfile.licenses || [],
+        education: displayProfile.education || [],
+        experience: displayProfile.experience || []
       });
       // Reset sub-forms
       setLicenseInput('');
@@ -37,7 +77,26 @@ export default function ProfileScreen() {
     setEditModalVisible(true);
   };
 
-  // Sub-list Handlers (Copied/Adapted from Personnel)
+  // Helper for tenure
+  const calculateTenure = (dateStr: string) => {
+    if (!dateStr) return '0 年 0 個月';
+    const start = new Date(dateStr);
+    const now = new Date();
+    if (isNaN(start.getTime())) return '日期格式錯誤';
+
+    let months = (now.getFullYear() - start.getFullYear()) * 12;
+    months -= start.getMonth();
+    months += now.getMonth();
+
+    if (months < 0) return '尚未到職';
+
+    const years = Math.floor(months / 12);
+    const remainingMonths = months % 12;
+
+    return `${years} 年 ${remainingMonths} 個月`;
+  };
+
+  // Sub-list Handlers
   const addLicense = () => {
     if (licenseInput.trim() && editForm) {
       setEditForm({ ...editForm, licenses: [...(editForm.licenses || []), licenseInput.trim()] });
