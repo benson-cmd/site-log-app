@@ -200,17 +200,28 @@ export default function ProjectsScreen() {
   };
 
   const handleDeleteParams = (id: string, name: string) => {
-    Alert.alert('刪除專案', `確定要刪除「${name}」嗎？此動作無法復原。`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '確認刪除', style: 'destructive', onPress: async () => {
-          alert('開始執行刪除...');
-          console.log('正在刪除專案 ID:', id);
-          await deleteProject(id);
-          Alert.alert('已刪除', '專案已成功移除');
-        }
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`確定要刪除「${name}」嗎？此動作無法復原。`);
+      if (confirm) {
+        // alert('開始執行刪除...'); 
+        console.log('正在刪除專案 ID:', id);
+        deleteProject(id).then(() => {
+          window.alert('專案已成功移除');
+        }).catch(e => console.error(e));
       }
-    ]);
+    } else {
+      Alert.alert('刪除專案', `確定要刪除「${name}」嗎？此動作無法復原。`, [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '確認刪除', style: 'destructive', onPress: async () => {
+            // alert('開始執行刪除...');
+            console.log('正在刪除專案 ID:', id);
+            await deleteProject(id);
+            Alert.alert('已刪除', '專案已成功移除');
+          }
+        }
+      ]);
+    }
   };
 
   // Extension Handlers

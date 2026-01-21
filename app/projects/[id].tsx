@@ -81,74 +81,72 @@ export default function ProjectDetailScreen() {
     }
   }, [project, isEditModalVisible]);
 
-  if (!project) {
-    return (
-      <View style={styles.container}>
-        <SafeAreaView />
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 20 }}><Ionicons name="arrow-back" size={24} color="#333" /></TouchableOpacity>
-        <Text style={{ textAlign: 'center', marginTop: 20 }}>找不到專案</Text>
-      </View>
-    );
-  }
-
   // --- Calculations ---
 
-  // Total Extension Days
   const totalExtensionDays = useMemo(() => {
-    return project.extensions?.reduce((sum, ext) => sum + (ext.days || 0), 0) || 0;
-  }, [project.extensions]);
+    return project?.extensions?.reduce((sum, ext) => sum + (ext.days || 0), 0) || 0;
+  }, [project?.extensions]);
 
-  // Planned Completion Date
   const plannedCompletionDate = useMemo(() => {
-    if (!project.startDate || !project.contractDuration) return '-';
+    if (!project?.startDate || !project?.contractDuration) return '-';
     const start = new Date(project.startDate);
     if (isNaN(start.getTime())) return '-';
-    // Formula: Start + Duration + Extensions - 1
     const totalDays = (project.contractDuration || 0) + totalExtensionDays - 1;
     const end = new Date(start);
     end.setDate(start.getDate() + totalDays);
     return end.toISOString().split('T')[0];
-  }, [project.startDate, project.contractDuration, totalExtensionDays]);
+  }, [project?.startDate, project?.contractDuration, totalExtensionDays]);
 
-  // Current Total Amount (Display Logic)
-  // Logic: Original + (Change Design New Total - Original)? No, simpler: 
-  // If Change Design exists, it SETS the new base.
-  // Then add Subsequent Expansions.
   const currentTotalAmount = useMemo(() => {
+    if (!project) return 0;
     let base = project.contractAmount || 0;
     if (project.changeDesigns && project.changeDesigns.length > 0) {
       base = project.changeDesigns[project.changeDesigns.length - 1].newTotalAmount;
     }
     const expansions = project.subsequentExpansions?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
     return base + expansions;
-  }, [project.contractAmount, project.changeDesigns, project.subsequentExpansions]);
+  }, [project?.contractAmount, project?.changeDesigns, project?.subsequentExpansions]);
 
 
   // --- Handlers ---
 
-  const handleDelete = () => {
-    Alert.alert('刪除專案', '確定要刪除此專案嗎？此動作無法復原。', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '確定刪除', style: 'destructive', onPress: async () => {
-          if (id) {
-            try {
-              console.log('正在刪除專案 ID:', id);
-              await deleteProject(id as string);
-              Alert.alert('成功', '專案已刪除', [{ text: 'OK', onPress: () => router.replace('/projects') }]);
-            } catch (e) {
-              Alert.alert('錯誤', '刪除失敗');
-              console.error(e);
-            }
+  const handleDelete = async () => {
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('確定要刪除此專案嗎？此動作無法復原。');
+      if (confirm) {
+        if (id) {
+          try {
+            console.log('正在刪除專案 ID:', id);
+            await deleteProject(id as string);
+            window.alert('專案已刪除');
+            router.replace('/projects');
+          } catch (e) {
+            window.alert('刪除失敗');
+            console.error(e);
           }
         }
       }
-    ]);
+    } else {
+      Alert.alert('刪除專案', '確定要刪除此專案嗎？此動作無法復原。', [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '確定刪除', style: 'destructive', onPress: async () => {
+            if (id) {
+              try {
+                await deleteProject(id as string);
+                Alert.alert('成功', '專案已刪除', [{ text: 'OK', onPress: () => router.replace('/projects') }]);
+              } catch (e) {
+                Alert.alert('錯誤', '刪除失敗');
+              }
+            }
+          }
+        }
+      ]);
+    }
   };
 
   const handleSave = async () => {
     if (!id) return;
-    // Recalc total for storage
     let newTotal = parseFloat(editProject.contractAmount?.toString() || '0');
     if (editProject.changeDesigns && editProject.changeDesigns.length > 0) {
       newTotal = editProject.changeDesigns[editProject.changeDesigns.length - 1].newTotalAmount;
@@ -162,10 +160,9 @@ export default function ProjectDetailScreen() {
       currentContractAmount: newTotal
     });
     setEditModalVisible(false);
-    Alert.alert('已儲存', '專案資料已更新');
+    Platform.OS === 'web' ? window.alert('已儲存：專案資料已更新') : Alert.alert('已儲存', '專案資料已更新');
   };
 
-  // --- Date Picker Helpers ---
   const handleDateChange = (field: string, value: string) => {
     if (field === 'extension') setExtForm(prev => ({ ...prev, date: value }));
     else if (field === 'changeDesign') setCdForm(prev => ({ ...prev, date: value }));
@@ -213,7 +210,6 @@ export default function ProjectDetailScreen() {
     );
   };
 
-  // --- Edit Form Handlers ---
   const handleAddExtension = () => {
     if (!extForm.days) return;
     const newExt: Extension = {
@@ -254,7 +250,6 @@ export default function ProjectDetailScreen() {
         Papa.parse(content, {
           header: true, skipEmptyLines: true,
           complete: (results) => {
-            // Simplified Logic for brevity
             const data: SchedulePoint[] = [];
             results.data.forEach((row: any) => {
               const k = Object.keys(row);
@@ -262,22 +257,18 @@ export default function ProjectDetailScreen() {
               const p = k.find(x => x.includes('progress') || x.includes('進度'));
               if (d && p) data.push({ date: row[d], progress: parseFloat(row[p]) || 0 });
             });
-            if (data.length) {
-              setEditProject(prev => ({ ...prev, scheduleData: data }));
-              Alert.alert('成功', `已匯入 ${data.length} 筆`);
-            }
+            if (data.length) setEditProject(prev => ({ ...prev, scheduleData: data }));
           }
         });
       }
     } catch (e) { Alert.alert('Error', 'Import failed'); }
   };
 
+  if (!project) return null;
 
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ title: '專案詳情', headerShown: false }} />
-      <StatusBar barStyle="light-content" backgroundColor={THEME.headerBg} />
-
       {/* Header */}
       <SafeAreaView style={styles.headerSafeArea}>
         <View style={styles.headerContent}>
@@ -292,32 +283,30 @@ export default function ProjectDetailScreen() {
 
       <ScrollView style={styles.content}>
 
-        {/* Basic Info Card */}
+        {/* Basic Info Card - PRECISE ALIGNMENT */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
             <Text style={styles.cardTitle}>基本資訊</Text>
-            <View style={styles.statusBadge}><Text style={styles.statusText}>{EXECUTION_STATUS_MAP[project.executionStatus || 'not_started']}</Text></View>
+            <View style={[styles.statusBadge, { zIndex: 1 }]}><Text style={styles.statusText}>{EXECUTION_STATUS_MAP[project.executionStatus || 'not_started']}</Text></View>
           </View>
 
           <View style={styles.infoRow}><Ionicons name="location-outline" size={18} color="#666" /><Text style={styles.infoText}>{project.address || '-'}</Text></View>
           <View style={styles.infoRow}><Ionicons name="person-outline" size={18} color="#666" /><Text style={styles.infoText}>主任: {project.manager || '-'}</Text></View>
-
           <View style={styles.divider} />
 
           <View style={styles.infoRow}><Text style={styles.labelCol}>契約工期:</Text><Text style={styles.valCol}>{project.contractDuration} 天</Text></View>
-          <View style={styles.infoRow}><Text style={styles.labelCol}>累計展延:</Text><Text style={styles.valCol}>{totalExtensionDays} 天</Text></View>
-
+          <View style={styles.infoRow}><Text style={styles.labelCol}>累計展延工期:</Text><Text style={styles.valCol}>{totalExtensionDays} 天</Text></View>
           <View style={styles.divider} />
 
           <View style={styles.infoRow}><Text style={styles.labelCol}>原始總價:</Text><Text style={styles.valCol}>${formatCurrency(project.contractAmount)}</Text></View>
           <View style={styles.infoRow}><Text style={[styles.labelCol, { color: THEME.primary, fontWeight: 'bold' }]}>變更(擴充)後總價:</Text><Text style={[styles.valCol, { color: THEME.primary, fontWeight: 'bold' }]}>${formatCurrency(currentTotalAmount)}</Text></View>
         </View>
 
-        {/* Important Dates Card */}
+        {/* Important Dates Card - PRECISE ALIGNMENT */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>重要日期</Text>
           <View style={styles.rowBetween}><Text style={styles.dateLabel}>決標日期:</Text><Text style={styles.dateVal}>{project.awardDate || '-'}</Text></View>
-          <View style={styles.rowBetween}><Text style={styles.dateLabel}>開工日期:</Text><Text style={styles.dateVal}>{project.startDate || '-'}</Text></View>
+          <View style={styles.rowBetween}><Text style={styles.dateLabel}>開工日:</Text><Text style={styles.dateVal}>{project.startDate || '-'}</Text></View>
           <View style={[styles.rowBetween, { backgroundColor: '#E3F2FD', padding: 5, borderRadius: 4, marginVertical: 5 }]}><Text style={{ color: '#002147', fontWeight: 'bold' }}>預定竣工日:</Text><Text style={{ color: '#002147', fontWeight: 'bold' }}>{plannedCompletionDate}</Text></View>
           <View style={styles.rowBetween}><Text style={styles.dateLabel}>實際竣工日:</Text><Text style={styles.dateVal}>{project.actualCompletionDate || '-'}</Text></View>
           <View style={styles.divider} />
@@ -373,7 +362,7 @@ export default function ProjectDetailScreen() {
           <TouchableOpacity key={log.id} style={styles.logCard} onPress={() => router.push('/logs')}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={{ fontWeight: 'bold' }}>{log.date}</Text>
-              <Text style={{ fontSize: 12, color: '#999' }}>進度: {log.todayProgress || '-'}%</Text>
+              {/* <Text style={{ fontSize: 12, color: '#999' }}>進度: {log.todayProgress || '-'}%</Text> */}
             </View>
             <Text numberOfLines={2} style={{ color: '#444', marginTop: 5 }}>{log.content}</Text>
           </TouchableOpacity>
