@@ -521,8 +521,15 @@ export default function ProjectsScreen() {
                   {renderDateInput('start', newProject.startDate || '', '選擇日期')}
                 </View>
               </View>
-              <Text style={styles.label}>契約工期 (天)</Text>
-              <TextInput style={styles.input} value={newProject.contractDuration?.toString()} onChangeText={t => setNewProject({ ...newProject, contractDuration: parseInt(t) || 0 })} keyboardType="number-pad" placeholder="600" />
+              <Text style={styles.label}>契約工期 (天) *</Text>
+              <TextInput
+                style={styles.input}
+                value={newProject.contractDuration?.toString() || ''}
+                onChangeText={t => setNewProject({ ...newProject, contractDuration: parseInt(t) || 0 })}
+                keyboardType="numeric"
+                placeholder="例如: 600"
+                editable={true}
+              />
 
               <View style={{ marginTop: 15 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
