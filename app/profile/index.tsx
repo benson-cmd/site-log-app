@@ -14,8 +14,8 @@ export default function ProfileScreen() {
 
   // Form State Extension
   const [licenseInput, setLicenseInput] = useState('');
-  const [eduInput, setEduInput] = useState<{ school: string, degree: string, year: string }>({ school: '', degree: '', year: '' });
-  const [expInput, setExpInput] = useState<{ company: string, role: string, duration: string }>({ company: '', role: '', duration: '' });
+  const [eduInput, setEduInput] = useState<{ school: string, major: string, degree: string, year: string }>({ school: '', major: '', degree: '', year: '' });
+  const [expInput, setExpInput] = useState<{ company: string, role: string, startMonth: string, endMonth: string }>({ company: '', role: '', startMonth: '', endMonth: '' });
 
   // Password State
   const [pwdForm, setPwdForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
@@ -73,8 +73,8 @@ export default function ProfileScreen() {
       });
       // Reset sub-forms
       setLicenseInput('');
-      setEduInput({ school: '', degree: '', year: '' });
-      setExpInput({ company: '', role: '', duration: '' });
+      setEduInput({ school: '', major: '', degree: '', year: '' });
+      setExpInput({ company: '', role: '', startMonth: '', endMonth: '' });
       setPwdForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
     }
     setEditModalVisible(true);
@@ -113,9 +113,15 @@ export default function ProfileScreen() {
   };
 
   const addEducation = () => {
-    if (eduInput.school && eduInput.degree && editForm) {
+    if (eduInput.school && eduInput.major && eduInput.degree && eduInput.year && editForm) {
+      // Validate year format (YYYY)
+      if (!/^\d{4}$/.test(eduInput.year)) {
+        Alert.alert('錯誤', '年份格式錯誤，請輸入 4 位數字西元年份');
+        return;
+      }
+
       setEditForm({ ...editForm, education: [...(editForm.education || []), eduInput] });
-      setEduInput({ school: '', degree: '', year: '' });
+      setEduInput({ school: '', major: '', degree: '', year: '' });
     }
   };
   const removeEducation = (idx: number) => {
@@ -125,9 +131,18 @@ export default function ProfileScreen() {
   };
 
   const addExperience = () => {
-    if (expInput.company && expInput.role && editForm) {
-      setEditForm({ ...editForm, experience: [...(editForm.experience || []), expInput] });
-      setExpInput({ company: '', role: '', duration: '' });
+    if (expInput.company && expInput.role && expInput.startMonth && expInput.endMonth && editForm) {
+      // Validate end date is not before start date
+      if (expInput.endMonth < expInput.startMonth) {
+        Alert.alert('錯誤', '結束日期不得早於開始日期');
+        return;
+      }
+
+      // Compute duration display string
+      const duration = `西元 ${expInput.startMonth.replace('-', '/')} - 西元 ${expInput.endMonth.replace('-', '/')}`;
+
+      setEditForm({ ...editForm, experience: [...(editForm.experience || []), { ...expInput, duration }] });
+      setExpInput({ company: '', role: '', startMonth: '', endMonth: '' });
     }
   };
   const removeExperience = (idx: number) => {
@@ -290,8 +305,8 @@ export default function ProfileScreen() {
                 <View style={[styles.timelineDot, { backgroundColor: '#C69C6D' }]} />
                 <View style={styles.timelineContent}>
                   <Text style={styles.timelineRole}>{edu.degree}</Text>
-                  <Text style={styles.timelineCompany}>{edu.school}</Text>
-                  <Text style={styles.timelineDate}>{edu.year}</Text>
+                  <Text style={styles.timelineCompany}>{edu.school} - {edu.major || '未指定科系'}</Text>
+                  <Text style={styles.timelineDate}>西元 {edu.year} 年</Text>
                 </View>
               </View>
             ))}
@@ -357,13 +372,14 @@ export default function ProfileScreen() {
                 <View style={styles.sectionHeader}><Text style={styles.sectionTitleSmall}>學歷</Text></View>
                 <View style={{ flexDirection: 'row', marginBottom: 5 }}>
                   <TextInput style={[styles.miniInput, { flex: 2 }]} placeholder="學校" value={eduInput.school} onChangeText={t => setEduInput({ ...eduInput, school: t })} />
+                  <TextInput style={[styles.miniInput, { flex: 2, marginHorizontal: 2 }]} placeholder="科系" value={eduInput.major} onChangeText={t => setEduInput({ ...eduInput, major: t })} />
                   <TextInput style={[styles.miniInput, { flex: 1, marginHorizontal: 2 }]} placeholder="學位" value={eduInput.degree} onChangeText={t => setEduInput({ ...eduInput, degree: t })} />
-                  <TextInput style={[styles.miniInput, { flex: 1 }]} placeholder="年份" value={eduInput.year} onChangeText={t => setEduInput({ ...eduInput, year: t })} />
+                  <TextInput style={[styles.miniInput, { flex: 1 }]} placeholder="西元 YYYY" value={eduInput.year} onChangeText={t => setEduInput({ ...eduInput, year: t })} keyboardType="numeric" maxLength={4} />
                 </View>
                 <TouchableOpacity style={[styles.addBtn, { alignSelf: 'flex-end', marginBottom: 10 }]} onPress={addEducation}><Text style={styles.addBtnText}>新增學歷</Text></TouchableOpacity>
                 {editForm.education?.map((edu, i) => (
                   <View key={i} style={styles.listItem}>
-                    <Text>{edu.school} - {edu.degree} ({edu.year})</Text>
+                    <Text>{edu.school} - {edu.major} - {edu.degree} (西元 {edu.year} 年)</Text>
                     <TouchableOpacity onPress={() => removeEducation(i)}><Ionicons name="trash" color="#FF6B6B" size={18} /></TouchableOpacity>
                   </View>
                 ))}
@@ -373,12 +389,46 @@ export default function ProfileScreen() {
                 <View style={{ flexDirection: 'row', marginBottom: 5 }}>
                   <TextInput style={[styles.miniInput, { flex: 2 }]} placeholder="公司" value={expInput.company} onChangeText={t => setExpInput({ ...expInput, company: t })} />
                   <TextInput style={[styles.miniInput, { flex: 2, marginHorizontal: 2 }]} placeholder="職位" value={expInput.role} onChangeText={t => setExpInput({ ...expInput, role: t })} />
-                  <TextInput style={[styles.miniInput, { flex: 1 }]} placeholder="期間" value={expInput.duration} onChangeText={t => setExpInput({ ...expInput, duration: t })} />
+                </View>
+                <View style={{ flexDirection: 'row', marginBottom: 5 }}>
+                  {Platform.OS === 'web' ? (
+                    <>
+                      <input
+                        type="month"
+                        value={expInput.startMonth}
+                        onChange={(e) => setExpInput({ ...expInput, startMonth: e.target.value })}
+                        placeholder="起始年月"
+                        style={{
+                          flex: 1, padding: 10, backgroundColor: '#fff',
+                          borderWidth: 1, borderColor: '#ddd', borderRadius: 8,
+                          fontSize: 13, marginRight: 2,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                      <input
+                        type="month"
+                        value={expInput.endMonth}
+                        onChange={(e) => setExpInput({ ...expInput, endMonth: e.target.value })}
+                        placeholder="結束年月"
+                        style={{
+                          flex: 1, padding: 10, backgroundColor: '#fff',
+                          borderWidth: 1, borderColor: '#ddd', borderRadius: 8,
+                          fontSize: 13, marginLeft: 2,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <TextInput style={[styles.miniInput, { flex: 1, marginRight: 2 }]} placeholder="起始 (YYYY-MM)" value={expInput.startMonth} onChangeText={t => setExpInput({ ...expInput, startMonth: t })} />
+                      <TextInput style={[styles.miniInput, { flex: 1, marginLeft: 2 }]} placeholder="結束 (YYYY-MM)" value={expInput.endMonth} onChangeText={t => setExpInput({ ...expInput, endMonth: t })} />
+                    </>
+                  )}
                 </View>
                 <TouchableOpacity style={[styles.addBtn, { alignSelf: 'flex-end', marginBottom: 10 }]} onPress={addExperience}><Text style={styles.addBtnText}>新增經歷</Text></TouchableOpacity>
                 {editForm.experience?.map((exp, i) => (
                   <View key={i} style={styles.listItem}>
-                    <Text>{exp.company} - {exp.role} ({exp.duration})</Text>
+                    <Text>{exp.company} - {exp.role} ({exp.duration || `${exp.startMonth} - ${exp.endMonth}`})</Text>
                     <TouchableOpacity onPress={() => removeExperience(i)}><Ionicons name="trash" color="#FF6B6B" size={18} /></TouchableOpacity>
                   </View>
                 ))}

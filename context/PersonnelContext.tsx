@@ -6,14 +6,17 @@ import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 
 export interface Education {
     school: string;
+    major: string;  // 科系
     degree: string;
-    year: string;
+    year: string;   // Format: YYYY (西元年份)
 }
 
 export interface Experience {
     company: string;
     role: string;
-    duration: string;
+    startMonth: string; // Format: YYYY-MM
+    endMonth: string;   // Format: YYYY-MM
+    duration?: string;  // Computed display: "西元 YYYY/MM - 西元 YYYY/MM" (for backward compatibility)
 }
 
 export interface Personnel {
