@@ -33,19 +33,19 @@ export default function CalendarScreen() {
         </View>
       </SafeAreaView>
 
-      <View style={{flex:1, justifyContent:'center', alignItems:'center'}}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <Ionicons name="calendar" size={80} color={THEME.primary} />
-        <Text style={{fontSize:20, marginTop:20, color:'#666'}}>行事曆功能串接中...</Text>
+        <Text style={{ fontSize: 20, marginTop: 20, color: '#666' }}>行事曆功能串接中...</Text>
       </View>
 
       <Modal visible={menuVisible} animationType="fade" transparent={true} onRequestClose={() => setMenuVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.sideMenu}>
             <SafeAreaView style={{ flex: 1 }}>
-              <View style={styles.menuHeader}><Ionicons name="calendar" size={24} color="#fff" /><Text style={styles.menuTitle}>行事曆</Text><TouchableOpacity onPress={() => setMenuVisible(false)} style={{marginLeft:'auto'}}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity></View>
+              <View style={styles.menuHeader}><Ionicons name="calendar" size={24} color="#fff" /><Text style={styles.menuTitle}>行事曆</Text><TouchableOpacity onPress={() => setMenuVisible(false)} style={{ marginLeft: 'auto' }}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity></View>
               <View style={styles.menuDivider} />
               <MenuItem icon="home-outline" label="首頁" onPress={() => { setMenuVisible(false); router.push('/dashboard'); }} />
-              <MenuItem icon="folder-outline" label="專案列表" onPress={() => { setMenuVisible(false); router.push('/projects'); }} />
+              <MenuItem icon="folder-outline" label="專案列表" onPress={() => { setMenuVisible(false); router.push('/projects/'); }} />
               <MenuItem icon="clipboard-outline" label="施工紀錄" onPress={() => { setMenuVisible(false); router.push('/logs'); }} />
               <MenuItem icon="people-outline" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
               <MenuItem icon="library-outline" label="SOP資料庫" onPress={() => { setMenuVisible(false); router.push('/sop'); }} />

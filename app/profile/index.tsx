@@ -254,7 +254,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Dynamic Sections Display */}
-        {profile.licenses && profile.licenses.length > 0 && (
+        {profile?.licenses && profile.licenses.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>專業證照</Text>
             <View style={styles.licenseRow}>
@@ -267,7 +267,7 @@ export default function ProfileScreen() {
             </View>
           </View>
         )}
-        {profile.experience && profile.experience.length > 0 && (
+        {profile?.experience && profile.experience.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>工作經歷</Text>
             {profile.experience.map((exp, idx) => (
@@ -282,7 +282,7 @@ export default function ProfileScreen() {
             ))}
           </View>
         )}
-        {profile.education && profile.education.length > 0 && (
+        {profile?.education && profile.education.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>學歷背景</Text>
             {profile.education.map((edu, idx) => (
