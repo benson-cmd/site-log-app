@@ -52,7 +52,7 @@ export default function LoginScreen() {
         msg = '網路連線不穩定，請檢查您的網路狀態。';
       }
 
-      Alert.alert('發送失敗', msg);
+      Alert.alert('發送失敗', `${msg}\n(錯誤代碼: ${error.code})`);
     } finally {
       setIsResetting(false);
     }

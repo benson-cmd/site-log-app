@@ -44,8 +44,8 @@ export default function PersonnelScreen() {
     const rocYear = year - 1911;
     if (rocYear < 0) return '';
     const rocYearStr = rocYear.toString().padStart(3, '0');
-    const month = parts[1];
-    const day = parts[2];
+    const month = parts[1].padStart(2, '0');
+    const day = parts[2].padStart(2, '0');
     return `${rocYearStr}${month}${day}`;
   };
 
