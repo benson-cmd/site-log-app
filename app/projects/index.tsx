@@ -63,6 +63,12 @@ export default function ProjectsScreen() {
   // Subsequent Expansion Inputs
   const [seForm, setSeForm] = useState({ count: '', date: '', docNumber: '', reason: '', amount: '' });
 
+  // CSV Import State
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvPreview, setCsvPreview] = useState<SchedulePoint[]>([]);
+  const [csvError, setCsvError] = useState('');
+  const [csvSuccess, setCsvSuccess] = useState('');
+
   // Manager Dropdown
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const managers = useMemo(() => personnelList.map(p => p.name), [personnelList]);
@@ -247,32 +253,51 @@ export default function ProjectsScreen() {
 
   // Import
   const handleImportSchedule = async () => {
+    setCsvError(''); setCsvSuccess(''); setCsvPreview([]); setCsvFileName('');
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'application/vnd.ms-excel', 'text/plain'], copyToCacheDirectory: true });
       if (!res.canceled && res.assets && res.assets[0]) {
         const file = res.assets[0];
+        setCsvFileName(file.name);
+
         const response = await fetch(file.uri);
         const content = await response.text();
         Papa.parse(content, {
           header: true, skipEmptyLines: true,
           complete: (results) => {
+            if (results.meta.fields) {
+              const fields = results.meta.fields.map(f => f.toLowerCase());
+              const hasDate = fields.some(f => f.includes('date') || f.includes('日期'));
+              const hasProg = fields.some(f => f.includes('progress') || f.includes('進度'));
+              if (!hasDate || !hasProg) {
+                setCsvError('格式錯誤：CSV 標題需包含 "Date/日期" 與 "Progress/進度"');
+                return;
+              }
+            }
+
             const parsedData: SchedulePoint[] = [];
             results.data.forEach((row: any) => {
               const keys = Object.keys(row);
               const dateKey = keys.find(k => k.toLowerCase().includes('date') || k.includes('日期'));
               const progKey = keys.find(k => k.toLowerCase().includes('progress') || k.includes('進度'));
-              if (dateKey && progKey) parsedData.push({ date: row[dateKey], progress: parseFloat(row[progKey]) || 0 });
+              if (dateKey && progKey && row[dateKey] && row[progKey]) {
+                parsedData.push({ date: row[dateKey], progress: parseFloat(row[progKey]) || 0 });
+              }
             });
             parsedData.sort((a, b) => a.date.localeCompare(b.date));
+
             if (parsedData.length > 0) {
               setNewProject(prev => ({ ...prev, scheduleData: parsedData }));
-              Alert.alert('成功', `已匯入 ${parsedData.length} 筆進度資料`);
-            } else { Alert.alert('錯誤', '無法解析 CSV'); }
+              setCsvSuccess(`CSV 解析成功，共讀取 ${parsedData.length} 筆資料`);
+              setCsvPreview(parsedData.slice(0, 3));
+            } else {
+              setCsvError('錯誤：無法解析出有效資料，請檢查 CSV 內容');
+            }
           },
-          error: (err: any) => Alert.alert('匯入失敗', err.message)
+          error: (err: any) => setCsvError(`解析失敗: ${err.message}`)
         });
       }
-    } catch (err: any) { console.log(err); Alert.alert('錯誤', '匯入失敗'); }
+    } catch (err: any) { setCsvError('匯入失敗'); }
   };
 
   // Calculations
@@ -469,12 +494,30 @@ export default function ProjectsScreen() {
               <Text style={styles.label}>契約工期 (天)</Text>
               <TextInput style={styles.input} value={newProject.contractDuration?.toString()} onChangeText={t => setNewProject({ ...newProject, contractDuration: parseInt(t) || 0 })} keyboardType="number-pad" placeholder="600" />
 
-              <View style={{ marginTop: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: 'bold', color: '#333' }}>預定進度表 (CSV)</Text>
-                <TouchableOpacity style={styles.importBtn} onPress={handleImportSchedule}>
-                  <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
-                  <Text style={{ color: '#fff', marginLeft: 5 }}>匯入</Text>
-                </TouchableOpacity>
+              <View style={{ marginTop: 15 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ fontWeight: 'bold', color: '#333' }}>預定進度表 (CSV)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {csvFileName ? <Text style={{ fontSize: 12, color: '#666', marginRight: 10 }}>{csvFileName}</Text> : null}
+                    <TouchableOpacity style={styles.importBtn} onPress={handleImportSchedule}>
+                      <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
+                      <Text style={{ color: '#fff', marginLeft: 5 }}>匯入</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {/* Feedback Area */}
+                {csvError ? <Text style={{ color: THEME.danger, fontSize: 12, marginTop: 5, backgroundColor: '#FFEBEE', padding: 5 }}>⚠️ {csvError}</Text> : null}
+                {csvSuccess ? <Text style={{ color: THEME.success, fontSize: 12, marginTop: 5, backgroundColor: '#E8F5E9', padding: 5 }}>✅ {csvSuccess}</Text> : null}
+
+                {/* Preview */}
+                {csvPreview.length > 0 && (
+                  <View style={{ marginTop: 10, backgroundColor: '#f9f9f9', padding: 10, borderRadius: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#666', marginBottom: 5 }}>資料預覽 (前3筆):</Text>
+                    {csvPreview.map((p, i) => (
+                      <Text key={i} style={{ fontSize: 12, color: '#333' }}>{p.date}: {p.progress}%</Text>
+                    ))}
+                  </View>
+                )}
               </View>
 
               {/* Extensions */}
