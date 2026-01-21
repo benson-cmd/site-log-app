@@ -204,13 +204,13 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
-              <Text style={styles.avatarText}>{profile.name.charAt(0)}</Text>
+              <Text style={styles.avatarText}>{profile?.name ? profile.name.charAt(0) : '?'}</Text>
             </View>
-            <Text style={styles.nameText}>{profile.name}</Text>
-            <Text style={styles.titleText}>{profile.title}</Text>
+            <Text style={styles.nameText}>{profile?.name || '未知使用者'}</Text>
+            <Text style={styles.titleText}>{profile?.title || '未設定職稱'}</Text>
             <View style={styles.tenureBadge}>
               <Ionicons name="time-outline" size={16} color="#002147" />
-              <Text style={styles.tenureText}>服務年資：{calculateTenure(profile.startDate)}</Text>
+              <Text style={styles.tenureText}>服務年資：{calculateTenure(profile?.startDate || '')}</Text>
             </View>
           </View>
         </SafeAreaView>
@@ -224,7 +224,7 @@ export default function ProfileScreen() {
             <View style={styles.iconBox}><Ionicons name="mail" size={18} color="#002147" /></View>
             <View>
               <Text style={styles.label}>電子郵件</Text>
-              <Text style={styles.value}>{profile.email}</Text>
+              <Text style={styles.value}>{profile?.email || '-'}</Text>
             </View>
           </View>
           <View style={styles.separator} />
@@ -232,7 +232,7 @@ export default function ProfileScreen() {
             <View style={styles.iconBox}><Ionicons name="call" size={18} color="#002147" /></View>
             <View>
               <Text style={styles.label}>聯絡電話</Text>
-              <Text style={styles.value}>{profile.phone}</Text>
+              <Text style={styles.value}>{profile?.phone || '-'}</Text>
             </View>
           </View>
           <View style={styles.separator} />
@@ -240,7 +240,7 @@ export default function ProfileScreen() {
             <View style={styles.iconBox}><Ionicons name="business" size={18} color="#002147" /></View>
             <View>
               <Text style={styles.label}>部門單位</Text>
-              <Text style={styles.value}>{profile.department || '未設定'}</Text>
+              <Text style={styles.value}>{profile?.department || '未設定'}</Text>
             </View>
           </View>
           <View style={styles.separator} />
@@ -248,7 +248,7 @@ export default function ProfileScreen() {
             <View style={styles.iconBox}><Ionicons name="calendar" size={18} color="#002147" /></View>
             <View>
               <Text style={styles.label}>到職日期</Text>
-              <Text style={styles.value}>{profile.startDate}</Text>
+              <Text style={styles.value}>{profile?.startDate || '-'}</Text>
             </View>
           </View>
         </View>

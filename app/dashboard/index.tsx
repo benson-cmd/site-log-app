@@ -107,7 +107,7 @@ export default function DashboardScreen() {
 
   const menuItems = [
     { title: '首頁', icon: 'home', path: '/dashboard' },
-    { title: '專案列表', icon: 'folder-open', path: '/projects' },
+    { title: '專案列表', icon: 'folder-open', path: '/projects/' },
     { title: '施工紀錄', icon: 'clipboard', path: '/logs' },
     { title: '人員管理', icon: 'people', path: '/personnel' },
     { title: 'SOP資料庫', icon: 'library', path: '/sop' },
