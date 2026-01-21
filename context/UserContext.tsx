@@ -49,8 +49,15 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       const docSnapshot = querySnapshot.docs[0];
       const userData = docSnapshot.data();
 
-      // Password Check: initialPassword or custom password
-      const validPwd = userData.initialPassword === pass || userData.password === pass;
+      // Password Check: 
+      // 1. If user has a custom password, they MUST use it.
+      // 2. If no custom password, they use initialPassword.
+      let validPwd = false;
+      if (userData.password) {
+        validPwd = userData.password === pass;
+      } else {
+        validPwd = userData.initialPassword === pass;
+      }
 
       if (validPwd) {
         setUser({

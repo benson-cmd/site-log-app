@@ -17,7 +17,11 @@ export default function PersonnelScreen() {
 
   // Form Data
   const [currentId, setCurrentId] = useState<string>('');
-  const [formData, setFormData] = useState<Partial<Personnel>>({
+  // Extend Personnel type locally or in context, but for now we rely on Partial<Personnel> in state.
+  // Since UserContext defines fields, we should treat password fields as optional extra props during form handling.
+  // However, best practice is to ensure TypeScript knows about them.
+  // We will modify the state type definition.
+  const [formData, setFormData] = useState<Partial<Personnel> & { password?: string; confirmPassword?: string; }>({
     name: '', title: '', email: '', phone: '', startDate: '', birthDate: '', department: '工務部', licenses: [], education: [], experience: []
   });
 
@@ -107,7 +111,17 @@ export default function PersonnelScreen() {
 
     try {
       if (isEditMode) {
-        await updatePersonnel(currentId, finalData);
+        // Password Validation
+        if (formData.password && formData.password !== formData.confirmPassword) {
+          showFeedback('錯誤', '兩次輸入的密碼不一致');
+          return;
+        }
+
+        // Clean up confirmPassword before saving
+        const dataToSave = { ...finalData };
+        delete dataToSave.confirmPassword;
+
+        await updatePersonnel(currentId, dataToSave);
         setModalVisible(false);
         setTimeout(() => showFeedback('操作成功', '資料已更新'), 100);
       } else {
@@ -366,6 +380,30 @@ export default function PersonnelScreen() {
                   <TouchableOpacity onPress={() => removeExperience(i)}><Ionicons name="trash" color="#FF6B6B" size={18} /></TouchableOpacity>
                 </View>
               ))}
+
+              {isEditMode && (
+                <>
+                  <Text style={styles.sectionHeader}>安全性設定</Text>
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={styles.label}>新密碼</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="若不修改請留空"
+                      value={formData.password || ''}
+                      onChangeText={t => setFormData({ ...formData, password: t })}
+                      secureTextEntry
+                    />
+                    <Text style={styles.label}>確認新密碼</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="請再次輸入新密碼"
+                      value={formData.confirmPassword || ''}
+                      onChangeText={t => setFormData({ ...formData, confirmPassword: t })}
+                      secureTextEntry
+                    />
+                  </View>
+                </>
+              )}
 
               {isEditMode && (
                 <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(currentId)}>

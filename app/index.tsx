@@ -1,13 +1,21 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { useUser } from '../context/UserContext';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../src/lib/firebase';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { login, isLoading } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Forgot Password State
+  const [isForgotModalVisible, setForgotModalVisible] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -18,10 +26,34 @@ export default function LoginScreen() {
     const success = await login(email, password);
 
     if (success) {
-      // 登入成功，導向 Dashboard
       router.replace('/dashboard');
     } else {
       Alert.alert('登入失敗', '帳號或密碼錯誤');
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail.trim()) {
+      Alert.alert('提示', '請輸入 Email');
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      Alert.alert('成功', '重設密碼信件已發送至您的信箱，請查看。');
+      setForgotModalVisible(false);
+      setResetEmail('');
+    } catch (error: any) {
+      console.error("Reset Error", error);
+      // Fallback for custom auth users who are not in Firebase Auth
+      let msg = '發送失敗，請稍後再試。';
+      if (error.code === 'auth/user-not-found') {
+        msg = '此 Email 尚未註冊 Firebase 驗證帳號。\n(若您使用預設帳號登入，請直接聯繫系統管理員重置)';
+      }
+      Alert.alert('重設失敗', msg);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -70,9 +102,46 @@ export default function LoginScreen() {
               <Text style={styles.buttonText}>登入系統</Text>
             )}
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.forgotBtn} onPress={() => setForgotModalVisible(true)}>
+            <Text style={styles.forgotText}>忘記密碼？</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.footerText}>© 2026 DW Construction Co., Ltd.</Text>
+
+        {/* Forgot Password Modal */}
+        <Modal visible={isForgotModalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>重設密碼</Text>
+                <TouchableOpacity onPress={() => setForgotModalVisible(false)}>
+                  <Ionicons name="close" size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.modalDesc}>請輸入您的註冊 Email，我們將發送重設信件給您。</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="輸入 Email"
+                value={resetEmail}
+                onChangeText={setResetEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <TouchableOpacity
+                style={[styles.button, isResetting && styles.buttonDisabled]}
+                onPress={handleForgotPassword}
+                disabled={isResetting}
+              >
+                {isResetting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>發送重設信件</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -145,9 +214,47 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  forgotBtn: {
+    marginTop: 15,
+    alignSelf: 'center',
+    padding: 5
+  },
+  forgotText: {
+    color: '#C69C6D',
+    fontSize: 14,
+    fontWeight: 'bold'
+  },
   footerText: {
     marginTop: 50,
     color: '#bbb',
     fontSize: 12,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 25,
+    elevation: 5
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#002147'
+  },
+  modalDesc: {
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 20
   }
 });
