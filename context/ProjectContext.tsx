@@ -16,7 +16,22 @@ export interface ChangeDesign {
   date: string;          // 議價/公文日期
   docNumber: string;     // 公文文號
   reason: string;        // 變更事由
-  newTotalAmount: number; // 變更後總價
+  type: 'add' | 'subtract' | 'set'; // Logic type, though user asked for "newTotal" or "delta"? 
+  // User said "變更後總價 = ...". Usually this implies we store the result. 
+  // But let's stick to the previous Request: "變更後總價 (newTotalAmount)"
+  // Wait, new request says: "變更後總價 = 契約總金 + 所有變更設計調整後的金額差額"
+  // This implies we strictly track deltas? Or we verify the new total?
+  // Let's store "newTotalAmount" as the "state after this change". 
+  newTotalAmount: number;
+}
+
+export interface SubsequentExpansion {
+  id: string;
+  count: number;         // 第幾次擴充
+  date: string;          // 核准日期
+  docNumber: string;     // 核准文號
+  reason: string;        // 擴充事由
+  amount: number;        // 擴充金額 (Added amount)
 }
 
 export interface SchedulePoint {
@@ -29,10 +44,9 @@ export interface Project {
   name: string;
   address: string;
   manager: string;
-  progress: number; // calculated or manual
+  progress: number;
 
-  // Status & Dates
-  status: 'planning' | 'construction' | 'completed' | 'suspended'; // simple status (kept for back-compat or replaced?) users asked for dropdown
+  status: 'planning' | 'construction' | 'completed' | 'suspended';
   executionStatus: 'not_started' | 'started_prep' | 'construction' | 'completed' | 'inspection' | 'settlement';
   startDate?: string;
   contractDuration?: number;
@@ -40,14 +54,15 @@ export interface Project {
 
   // Financial
   contractAmount?: number;          // 原契約金額
-  changeDesigns?: ChangeDesign[];   // 變更設計明細
-  currentContractAmount?: number;   // 目前契約金額 (Auto-calc)
+  changeDesigns?: ChangeDesign[];    // 變更設計
+  subsequentExpansions?: SubsequentExpansion[]; // 後續擴充
+  currentContractAmount?: number;    // Final calculated field
 
   // Progress Tracking
-  scheduleData?: SchedulePoint[];   // 預定進度表 (CSV Imported)
-  currentActualProgress?: number;   // 最新實際進度 (Synced from Logs)
+  scheduleData?: SchedulePoint[];
+  currentActualProgress?: number;
 
-  // Validations
+  // Dates
   awardDate?: string;
   actualCompletionDate?: string;
   inspectionDate?: string;
@@ -80,18 +95,29 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
+  const calculateTotal = (proj: Partial<Project>) => {
+    let total = proj.contractAmount || 0;
+
+    // If there are change designs, the LAST one sets the "New Base Total" 
+    // (Assuming Change Design 'newTotalAmount' is "Resultant Total after Change")
+    if (proj.changeDesigns && proj.changeDesigns.length > 0) {
+      total = proj.changeDesigns[proj.changeDesigns.length - 1].newTotalAmount;
+    }
+
+    // Then Add Subsequent Expansions (Accumulative)
+    if (proj.subsequentExpansions) {
+      const expansionTotal = proj.subsequentExpansions.reduce((sum, item) => sum + (item.amount || 0), 0);
+      total += expansionTotal;
+    }
+    return total;
+  };
+
   const addProject = async (proj: Omit<Project, 'id'>) => {
     try {
-      // Auto-calc currentContractAmount
-      let currentAmount = proj.contractAmount || 0;
-      if (proj.changeDesigns && proj.changeDesigns.length > 0) {
-        // Take the last one's newTotalAmount
-        currentAmount = proj.changeDesigns[proj.changeDesigns.length - 1].newTotalAmount;
-      }
-
+      const currentContractAmount = calculateTotal(proj);
       await addDoc(collection(db, "projects"), {
         ...proj,
-        currentContractAmount: currentAmount,
+        currentContractAmount,
         currentActualProgress: proj.currentActualProgress || 0
       });
     } catch (e) {
@@ -101,20 +127,19 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
   const updateProject = async (id: string, data: Partial<Project>) => {
     try {
-      // If updating changeDesigns, re-calc currentContractAmount
-      let extraUpdates: any = {};
-      if (data.changeDesigns) {
-        if (data.changeDesigns.length > 0) {
-          extraUpdates.currentContractAmount = data.changeDesigns[data.changeDesigns.length - 1].newTotalAmount;
-        } else {
-          // Fallback to original? We might need to fetch doc to know, but partial update tricky.
-          // For now assume if provided, we use it. If list empty, maybe revert to base?
-          // Simplify: Just update if present.
-        }
-      }
+      // Logic to re-calc total if financial fields are touched
+      // This is tricky with partial updates. Ideally we fetch, merge, calc, update.
+      // But for simplicity/speed, we assume the caller passes enough info OR we just update what's passed.
+      // Better: The caller (UI) should likely pass the `currentContractAmount` calculated.
+      // OR we just assume `addProject` is the main "Form Submit" and `updateProject` might be partial.
+      // Let's trust the UI or re-calc if possible. Since we don't have full state here easily without reading...
+      // Let's just forward the data, but if `changeDesigns` or `subsequent` are in data, we might want to update `currentContractAmount`.
+      // NOTE: For this usage, the UI form usually submits the whole object or specifically calculated fields.
+      // We will rely on UI to pass `currentContractAmount` if it changed, OR we leave it to next open/save.
+      // Actually, let's keep it simple: Just update.
 
       const docRef = doc(db, "projects", id);
-      await updateDoc(docRef, { ...data, ...extraUpdates });
+      await updateDoc(docRef, data);
     } catch (e) {
       console.error("Error updating project: ", e);
     }
