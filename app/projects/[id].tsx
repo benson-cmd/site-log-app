@@ -30,6 +30,17 @@ const EXECUTION_STATUS_MAP: Record<string, string> = {
 };
 const EXECUTION_STATUS_OPTIONS = Object.keys(EXECUTION_STATUS_MAP);
 
+const formatCurrency = (val: number | string | undefined) => {
+  if (!val) return '';
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(num)) return '';
+  return num.toLocaleString();
+};
+
+const parseCurrency = (val: string) => {
+  return parseFloat(val.replace(/,/g, '')) || 0;
+};
+
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -49,7 +60,12 @@ export default function ProjectDetailScreen() {
   // Change Design Form
   const [cdForm, setCdForm] = useState({ count: '', date: '', docNumber: '', reason: '', newTotalAmount: '' });
   // Subsequent Expansion Form
-  const [seForm, setSeForm] = useState({ count: '', date: '', docNumber: '', reason: '', amount: '' });
+  const [seForm, setSeForm] = useState({ count: '1', date: '', docNumber: '', reason: '', amount: '' });
+
+  // Count Pickers
+  const [showCdCountPicker, setShowCdCountPicker] = useState(false);
+  const [showSeCountPicker, setShowSeCountPicker] = useState(false);
+  const COUNT_OPTIONS = ['1', '2', '3', '4', '5'];
 
   // Dropdowns
   const [showManagerPicker, setShowManagerPicker] = useState(false);
@@ -295,7 +311,16 @@ export default function ProjectDetailScreen() {
           <View style={styles.infoRow}><Ionicons name="person-outline" size={16} color="#666" /><Text style={styles.infoText}>主任: {project.manager}</Text></View>
           <View style={styles.infoRow}><Ionicons name="calendar-outline" size={16} color="#666" /><Text style={styles.infoText}>開工: {project.startDate}</Text></View>
           <View style={styles.infoRow}><Ionicons name="time-outline" size={16} color="#666" /><Text style={styles.infoText}>工期: {project.contractDuration} 天</Text></View>
-          <View style={styles.infoRow}><Ionicons name="cash-outline" size={16} color="#666" /><Text style={styles.infoText}>總價: ${project.currentContractAmount?.toLocaleString()}</Text></View>
+          <View style={styles.infoRow}><Ionicons name="cash-outline" size={16} color="#666" /><Text style={styles.infoText}>總價: ${formatCurrency(project.currentContractAmount)}</Text></View>
+        </View>
+
+        {/* Dates Card - NEW */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>重要日期</Text>
+          <View style={styles.rowBetween}><Text style={{ color: '#666' }}>決標日期:</Text><Text style={{ fontWeight: '500' }}>{project.awardDate || '-'}</Text></View>
+          <View style={styles.rowBetween}><Text style={{ color: '#666' }}>實際竣工:</Text><Text style={{ fontWeight: '500' }}>{project.actualCompletionDate || '-'}</Text></View>
+          <View style={styles.rowBetween}><Text style={{ color: '#666' }}>驗收日期:</Text><Text style={{ fontWeight: '500' }}>{project.inspectionDate || '-'}</Text></View>
+          <View style={styles.rowBetween}><Text style={{ color: '#666' }}>驗收合格:</Text><Text style={{ fontWeight: '500' }}>{project.inspectionPassedDate || '-'}</Text></View>
         </View>
 
         {/* Extensions List */}
@@ -414,7 +439,7 @@ export default function ProjectDetailScreen() {
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 5 }}>
                   <Text style={styles.label}>契約原金</Text>
-                  <TextInput style={styles.input} keyboardType="numeric" value={editProject.contractAmount?.toString()} onChangeText={t => setEditProject({ ...editProject, contractAmount: parseFloat(t) || 0 })} />
+                  <TextInput style={styles.input} keyboardType="numeric" value={formatCurrency(editProject.contractAmount)} onChangeText={t => setEditProject({ ...editProject, contractAmount: parseCurrency(t) })} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>目前總價: ${currentTotalAmount.toLocaleString()}</Text>
@@ -432,10 +457,17 @@ export default function ProjectDetailScreen() {
               ))}
               <View style={styles.addBox}>
                 <View style={styles.row}>
-                  <TextInput style={[styles.miniInput, { width: 50 }]} placeholder="#" value={cdForm.count} onChangeText={t => setCdForm({ ...cdForm, count: t })} />
+                  <TouchableOpacity style={[styles.miniInput, { width: 60, justifyContent: 'center' }]} onPress={() => setShowCdCountPicker(!showCdCountPicker)}>
+                    <Text>{cdForm.count} <Ionicons name="chevron-down" size={12} /></Text>
+                  </TouchableOpacity>
+                  {showCdCountPicker && (
+                    <View style={styles.dropdownListMini}>
+                      {COUNT_OPTIONS.map(c => (<TouchableOpacity key={c} onPress={() => { setCdForm({ ...cdForm, count: c }); setShowCdCountPicker(false) }} style={{ padding: 8 }}><Text>{c}</Text></TouchableOpacity>))}
+                    </View>
+                  )}
                   <View style={{ flex: 1, marginLeft: 5 }}>{renderDateInput('changeDesign', cdForm.date, '日期')}</View>
                 </View>
-                <TextInput style={styles.miniInput} placeholder="新總價" keyboardType="numeric" value={cdForm.newTotalAmount} onChangeText={t => setCdForm({ ...cdForm, newTotalAmount: t })} />
+                <TextInput style={styles.miniInput} placeholder="新總價" keyboardType="numeric" value={formatCurrency(cdForm.newTotalAmount)} onChangeText={t => setCdForm({ ...cdForm, newTotalAmount: parseCurrency(t).toString() })} />
                 <TextInput style={[styles.miniInput, { minHeight: 50 }]} multiline placeholder="變更事由" value={cdForm.reason} onChangeText={t => setCdForm({ ...cdForm, reason: t })} />
                 <TouchableOpacity onPress={handleAddChangeDesign} style={styles.addBtn}><Text style={{ color: '#fff' }}>加入變更</Text></TouchableOpacity>
               </View>
@@ -451,10 +483,17 @@ export default function ProjectDetailScreen() {
               ))}
               <View style={styles.addBox}>
                 <View style={styles.row}>
-                  <TextInput style={[styles.miniInput, { width: 50 }]} placeholder="#" value={seForm.count} onChangeText={t => setSeForm({ ...seForm, count: t })} />
+                  <TouchableOpacity style={[styles.miniInput, { width: 60, justifyContent: 'center' }]} onPress={() => setShowSeCountPicker(!showSeCountPicker)}>
+                    <Text>{seForm.count} <Ionicons name="chevron-down" size={12} /></Text>
+                  </TouchableOpacity>
+                  {showSeCountPicker && (
+                    <View style={styles.dropdownListMini}>
+                      {['1', '2'].map(c => (<TouchableOpacity key={c} onPress={() => { setSeForm({ ...seForm, count: c }); setShowSeCountPicker(false) }} style={{ padding: 8 }}><Text>{c}</Text></TouchableOpacity>))}
+                    </View>
+                  )}
                   <View style={{ flex: 1, marginLeft: 5 }}>{renderDateInput('subsequentExpansion', seForm.date, '核准日期')}</View>
                 </View>
-                <TextInput style={styles.miniInput} placeholder="擴充金額 (追加)" keyboardType="numeric" value={seForm.amount} onChangeText={t => setSeForm({ ...seForm, amount: t })} />
+                <TextInput style={styles.miniInput} placeholder="擴充金額 (追加)" keyboardType="numeric" value={formatCurrency(seForm.amount)} onChangeText={t => setSeForm({ ...seForm, amount: parseCurrency(t).toString() })} />
                 <TextInput style={[styles.miniInput, { minHeight: 50 }]} multiline placeholder="擴充事由" value={seForm.reason} onChangeText={t => setSeForm({ ...seForm, reason: t })} />
                 <TouchableOpacity onPress={handleAddSubsequent} style={styles.addBtn}><Text style={{ color: '#fff' }}>加入擴充</Text></TouchableOpacity>
               </View>
@@ -522,6 +561,7 @@ const styles = StyleSheet.create({
   miniInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 4, padding: 6, marginBottom: 5, fontSize: 13, textAlignVertical: 'top' },
   addBtn: { backgroundColor: '#555', padding: 8, borderRadius: 4, alignItems: 'center' },
   dateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 10 },
+  dropdownListMini: { position: 'absolute', top: 35, left: 0, width: 60, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', zIndex: 9999 },
   dateBtnText: { color: '#333' },
   iosDatePickerContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   iosDatePickerContent: { backgroundColor: '#fff', padding: 20 },

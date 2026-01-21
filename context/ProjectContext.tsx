@@ -17,6 +17,7 @@ export interface ChangeDesign {
   docNumber: string;     // 公文文號
   reason: string;        // 變更事由
   newTotalAmount: number; // 變更後總價
+  type?: 'set'; // For consistency with usage
 }
 
 export interface SubsequentExpansion {
