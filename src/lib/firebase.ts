@@ -1,0 +1,19 @@
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+// import { getAuth } from "firebase/auth"; // Auth is managed by custom context for now, but good to have ready
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDPsdk6B6LwWKY22FPiR0MGchZ-s5irhv0",
+    authDomain: "site-log-app.firebaseapp.com",
+    projectId: "site-log-app",
+    storageBucket: "site-log-app.firebasestorage.app",
+    messagingSenderId: "923382656123",
+    appId: "1:923382656123:web:21e83b2449fd5d798746de",
+    measurementId: "G-JTN8Z361N7"
+};
+
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+// export const auth = getAuth(app);

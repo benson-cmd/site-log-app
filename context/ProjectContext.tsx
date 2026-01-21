@@ -1,4 +1,6 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import { db } from '../src/lib/firebase';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
 export interface Extension {
   id: string;
@@ -29,75 +31,52 @@ export interface Project {
 
 interface ProjectContextType {
   projects: Project[];
-  addProject: (proj: Omit<Project, 'id'>) => void;
-  updateProject: (id: string, data: Partial<Project>) => void;
-  deleteProject: (id: string) => void;
+  addProject: (proj: Omit<Project, 'id'>) => Promise<void>;
+  updateProject: (id: string, data: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
 }
 
 const ProjectContext = createContext<ProjectContextType | null>(null);
 
 export const ProjectProvider = ({ children }: { children: ReactNode }) => {
-  const [projects, setProjects] = useState<Project[]>([
-    {
-      id: '1',
-      name: '台中七期商辦大樓',
-      address: '台中市西屯區市政路',
-      manager: '王大明',
-      progress: 35,
-      status: 'construction',
-      startDate: '2025-01-01',
-      contractDuration: 600,
-      extensions: [],
-      awardDate: '2024-11-15'
-    },
-    {
-      id: '2',
-      name: '高雄亞灣住宅案',
-      address: '高雄市前鎮區成功路',
-      manager: '林建國',
-      progress: 12,
-      status: 'construction',
-      startDate: '2025-06-01',
-      contractDuration: 450,
-      extensions: [],
-      awardDate: '2025-03-01'
-    },
-    {
-      id: '3',
-      name: '台北信義區總部修繕',
-      address: '台北市信義區松高路',
-      manager: '陳曉華',
-      progress: 85,
-      status: 'construction',
-      startDate: '2024-05-15',
-      contractDuration: 300,
-      extensions: [{ id: 'e1', days: 15, date: '2024-10-01', docNumber: '北市工字第12345號', reason: '颱風影響' }],
-      awardDate: '2024-04-01'
-    },
-    {
-      id: '4',
-      name: '桃園青埔物流中心',
-      address: '桃園市中壢區領航北路',
-      manager: '張志偉',
-      progress: 0,
-      status: 'planning',
-      startDate: '',
-      contractDuration: 0,
-      extensions: []
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, "projects"), orderBy("name")); // Simple default sort
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Project[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as Project);
+      });
+      setProjects(list);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const addProject = async (proj: Omit<Project, 'id'>) => {
+    try {
+      await addDoc(collection(db, "projects"), proj);
+    } catch (e) {
+      console.error("Error adding project: ", e);
     }
-  ]);
-
-  const addProject = (proj: Omit<Project, 'id'>) => {
-    const newProj = { ...proj, id: Math.random().toString(36).substr(2, 9) };
-    setProjects(prev => [newProj, ...prev]);
   };
 
-  const updateProject = (id: string, data: Partial<Project>) => {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+  const updateProject = async (id: string, data: Partial<Project>) => {
+    try {
+      const docRef = doc(db, "projects", id);
+      await updateDoc(docRef, data);
+    } catch (e) {
+      console.error("Error updating project: ", e);
+    }
   };
 
-  const deleteProject = (id: string) => {
-    setProjects(prev => prev.filter(p => p.id !== id));
+  const deleteProject = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "projects", id));
+    } catch (e) {
+      console.error("Error deleting project: ", e);
+    }
   };
 
   return (

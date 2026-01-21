@@ -1,4 +1,6 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import { db } from '../src/lib/firebase';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
 export interface LogEntry {
   id: string;
@@ -9,76 +11,112 @@ export interface LogEntry {
   content: string;
   reporter: string;
   status: 'draft' | 'pending_review' | 'approved' | 'rejected'; // 審核狀態
+  photos?: string[]; // 照片連結 (Cloudinary URL)
 }
 
 interface LogContextType {
   logs: LogEntry[];
-  addLog: (log: Omit<LogEntry, 'id'>) => void;
-  updateLog: (id: string, data: Partial<LogEntry>) => void;
-  deleteLog: (id: string) => void;
+  addLog: (log: Omit<LogEntry, 'id'>) => Promise<void>;
+  updateLog: (id: string, data: Partial<LogEntry>) => Promise<void>;
+  deleteLog: (id: string) => Promise<void>;
+  uploadPhoto: (uri: string) => Promise<string>;
 }
 
 const LogContext = createContext<LogContextType | null>(null);
 
 export const LogProvider = ({ children }: { children: ReactNode }) => {
-  const [logs, setLogs] = useState<LogEntry[]>([
-    {
-      id: '1',
-      date: '2026-01-20',
-      project: '台中七期商辦',
-      weather: '晴 ☀️',
-      temperature: '24°C',
-      content: '1. 1F 柱牆鋼筋綁紮查驗\n2. B1F 模板拆除作業',
-      reporter: '吳資彬',
-      status: 'pending_review' // 待審核
-    },
-    {
-      id: '2',
-      date: '2026-01-19',
-      project: '台中七期商辦',
-      weather: '陰 ☁️',
-      temperature: '20°C',
-      content: '1. B1F 混凝土澆置養護\n2. 進場材料：鋼筋 50 噸',
-      reporter: '陳曉華',
-      status: 'approved' // 已簽核
-    },
-    {
-      id: '3',
-      date: '2026-01-18',
-      project: '高雄亞灣住宅案',
-      weather: '雨 🌧️',
-      temperature: '18°C',
-      content: '1. 暫停戶外吊掛作業\n2. 室內泥作粉刷',
-      reporter: '林建國',
-      status: 'pending_review' // 待審核
-    },
-    {
-      id: '4',
-      date: '2026-01-18',
-      project: '桃園青埔物流中心',
-      weather: '晴',
-      temperature: '22°C',
-      content: '1. 整地作業',
-      reporter: '張志偉',
-      status: 'draft' // 草稿
-    },
-  ]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  const addLog = (log: Omit<LogEntry, 'id'>) => {
-    const newLog = { ...log, id: Math.random().toString(36).substr(2, 9) };
-    setLogs(prev => [newLog, ...prev]);
+  useEffect(() => {
+    const q = query(collection(db, "logs"), orderBy("date", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: LogEntry[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as LogEntry);
+      });
+      setLogs(list);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const uploadPhoto = async (uri: string): Promise<string> => {
+    try {
+      const formData = new FormData();
+      // @ts-ignore
+      formData.append('file', {
+        uri: uri,
+        type: 'image/jpeg',
+        name: 'upload.jpg'
+      });
+      formData.append('upload_preset', 'ml_default');
+
+      const response = await fetch('https://api.cloudinary.com/v1_1/df8uaeazt/image/upload', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const data = await response.json();
+      if (data.secure_url) {
+        return data.secure_url;
+      } else {
+        console.error("Cloudinary Error:", data);
+        throw new Error("Upload failed");
+      }
+    } catch (e) {
+      console.error("Upload failed:", e);
+      throw e;
+    }
   };
 
-  const updateLog = (id: string, data: Partial<LogEntry>) => {
-    setLogs(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
+  const addLog = async (log: Omit<LogEntry, 'id'>) => {
+    try {
+      let finalPhotos: string[] = [];
+      if (log.photos && log.photos.length > 0) {
+        finalPhotos = await Promise.all(log.photos.map(async (p) => {
+          if (p.startsWith('http')) return p; // Already a remote URL
+          return await uploadPhoto(p);
+        }));
+      }
+
+      await addDoc(collection(db, "logs"), { ...log, photos: finalPhotos });
+    } catch (e) {
+      console.error("Error adding log: ", e);
+      throw e;
+    }
   };
 
-  const deleteLog = (id: string) => {
-    setLogs(prev => prev.filter(l => l.id !== id));
+  const updateLog = async (id: string, data: Partial<LogEntry>) => {
+    try {
+      let finalPhotos = data.photos;
+      if (data.photos && data.photos.length > 0) {
+        finalPhotos = await Promise.all(data.photos.map(async (p) => {
+          if (p.startsWith('http')) return p;
+          return await uploadPhoto(p);
+        }));
+      }
+
+      const docRef = doc(db, "logs", id);
+      await updateDoc(docRef, { ...data, photos: finalPhotos || data.photos });
+    } catch (e) {
+      console.error("Error updating log: ", e);
+      throw e;
+    }
+  };
+
+  const deleteLog = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "logs", id));
+    } catch (e) {
+      console.error("Error deleting log: ", e);
+    }
   };
 
   return (
-    <LogContext.Provider value={{ logs, addLog, updateLog, deleteLog }}>
+    <LogContext.Provider value={{ logs, addLog, updateLog, deleteLog, uploadPhoto }}>
       {children}
     </LogContext.Provider>
   );
