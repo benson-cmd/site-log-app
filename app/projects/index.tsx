@@ -1,11 +1,11 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, StatusBar, Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useMemo } from 'react'; // Added React import for createElement
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useUser } from '../../context/UserContext';
 import { useProjects, Project, Extension } from '../../context/ProjectContext';
 import { usePersonnel } from '../../context/PersonnelContext';
-import { useState, useMemo } from 'react';
 
 const THEME = {
   primary: '#C69C6D',
@@ -39,15 +39,15 @@ export default function ProjectsScreen() {
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const managers = useMemo(() => personnelList.map(p => p.name), [personnelList]);
 
-  // Date Picker Logic
+  // Date Picker Logic (Native)
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFieldTarget, setDateFieldTarget] = useState<'award' | 'start' | 'actual' | 'inspection' | 'reinspection' | 'passed' | 'extension'>('start');
   const [tempDate, setTempDate] = useState(new Date());
 
-  const openDatePicker = (field: typeof dateFieldTarget) => {
+  // Helper for Native Picker
+  const openNativeDatePicker = (field: typeof dateFieldTarget) => {
     setDateFieldTarget(field);
     let initialDate = new Date();
-    // Try to parse existing value
     try {
       if (field === 'award' && newProject.awardDate) initialDate = new Date(newProject.awardDate);
       else if (field === 'start' && newProject.startDate) initialDate = new Date(newProject.startDate);
@@ -61,30 +61,72 @@ export default function ProjectsScreen() {
     setShowDatePicker(true);
   };
 
-  const onDateChange = (event: any, selectedDate?: Date) => {
+  const onNativeDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
     if (selectedDate) {
       setTempDate(selectedDate);
-      if (Platform.OS === 'android') confirmDate(selectedDate);
+      if (Platform.OS === 'android') confirmNativeDate(selectedDate);
     }
   };
 
-  const confirmDate = (date: Date) => {
+  const confirmNativeDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    if (dateFieldTarget === 'extension') {
-      setExtForm(prev => ({ ...prev, date: dateStr }));
-    } else if (dateFieldTarget === 'award') {
-      setNewProject(prev => ({ ...prev, awardDate: dateStr }));
-    } else if (dateFieldTarget === 'start') {
-      setNewProject(prev => ({ ...prev, startDate: dateStr }));
-    } else if (dateFieldTarget === 'actual') {
-      setNewProject(prev => ({ ...prev, actualCompletionDate: dateStr }));
-    } else if (dateFieldTarget === 'inspection') {
-      setNewProject(prev => ({ ...prev, inspectionDate: dateStr }));
-    } else if (dateFieldTarget === 'reinspection') {
-      setNewProject(prev => ({ ...prev, reinspectionDate: dateStr }));
-    }
+    handleDateChange(dateFieldTarget, dateStr);
     if (Platform.OS === 'ios') setShowDatePicker(false);
+  };
+
+  // Unified Date Change Handler
+  const handleDateChange = (field: string, value: string) => {
+    if (field === 'extension') {
+      setExtForm(prev => ({ ...prev, date: value }));
+    } else if (field === 'award') {
+      setNewProject(prev => ({ ...prev, awardDate: value }));
+    } else if (field === 'start') {
+      setNewProject(prev => ({ ...prev, startDate: value }));
+    } else if (field === 'actual') {
+      setNewProject(prev => ({ ...prev, actualCompletionDate: value }));
+    } else if (field === 'inspection') {
+      setNewProject(prev => ({ ...prev, inspectionDate: value }));
+    } else if (field === 'reinspection') {
+      setNewProject(prev => ({ ...prev, reinspectionDate: value }));
+    }
+  };
+
+  // Date Input Component (Web/Native Split)
+  const renderDateInput = (field: any, value: string, placeholder: string, customStyle?: any) => {
+    if (Platform.OS === 'web') {
+      // Web Implementation: HTML5 Input
+      return React.createElement('input', {
+        type: 'date',
+        value: value,
+        onChange: (e: any) => handleDateChange(field, e.target.value),
+        style: {
+          padding: 12,
+          backgroundColor: customStyle?.backgroundColor || '#F9F9F9',
+          borderWidth: 1,
+          borderColor: customStyle?.borderColor || '#ddd',
+          borderStyle: 'solid',
+          borderRadius: 8,
+          fontSize: 16,
+          color: '#333',
+          width: '100%',
+          height: 50, // Match typical RN TextInput height
+          boxSizing: 'border-box',
+          ...customStyle
+        }
+      });
+    }
+
+    // Native Implementation: TouchableOpacity -> Modal
+    return (
+      <TouchableOpacity
+        style={[styles.dateBtn, customStyle]}
+        onPress={() => openNativeDatePicker(field)}
+      >
+        <Text style={[styles.dateBtnText, !value && { color: '#999' }]}>{value || placeholder}</Text>
+        <Ionicons name="calendar-outline" size={18} color="#666" />
+      </TouchableOpacity>
+    );
   };
 
   // Filter Logic
@@ -290,17 +332,11 @@ export default function ProjectsScreen() {
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.label}>決標日期</Text>
-                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('award')}>
-                    <Text style={styles.dateBtnText}>{newProject.awardDate || '選擇日期'}</Text>
-                    <Ionicons name="calendar-outline" size={18} color="#666" />
-                  </TouchableOpacity>
+                  {renderDateInput('award', newProject.awardDate || '', '選擇日期')}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>開工日期 *</Text>
-                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('start')}>
-                    <Text style={styles.dateBtnText}>{newProject.startDate || '選擇日期'}</Text>
-                    <Ionicons name="calendar-outline" size={18} color="#666" />
-                  </TouchableOpacity>
+                  {renderDateInput('start', newProject.startDate || '', '選擇日期')}
                 </View>
               </View>
 
@@ -323,9 +359,9 @@ export default function ProjectsScreen() {
                 <View style={styles.addExtBox}>
                   <View style={styles.row}>
                     <TextInput style={[styles.smallInput, { flex: 1 }]} placeholder="天數" keyboardType="number-pad" value={extForm.days} onChangeText={t => setExtForm({ ...extForm, days: t })} />
-                    <TouchableOpacity style={[styles.smalldateBtn, { flex: 2, marginLeft: 5 }]} onPress={() => openDatePicker('extension')}>
-                      <Text style={{ color: extForm.date ? '#333' : '#999' }}>{extForm.date || '公文日期'}</Text>
-                    </TouchableOpacity>
+                    <View style={{ flex: 2, marginLeft: 5 }}>
+                      {renderDateInput('extension', extForm.date || '', '公文日期', { height: 35, padding: 8, fontSize: 13, backgroundColor: '#fff', borderRadius: 6 })}
+                    </View>
                   </View>
                   <View style={[styles.row, { marginTop: 5 }]}>
                     <TextInput style={[styles.smallInput, { flex: 1 }]} placeholder="文號" value={extForm.docNumber} onChangeText={t => setExtForm({ ...extForm, docNumber: t })} />
@@ -345,10 +381,7 @@ export default function ProjectsScreen() {
                 </View>
                 <View style={{ flex: 1, marginLeft: 5 }}>
                   <Text style={styles.label} numberOfLines={1}>實際竣工日</Text>
-                  <TouchableOpacity style={[styles.dateBtn, { backgroundColor: '#E8F5E9', borderColor: '#81C784' }]} onPress={() => openDatePicker('actual')}>
-                    <Text style={styles.dateBtnText}>{newProject.actualCompletionDate || '選擇日期'}</Text>
-                    <Ionicons name="checkmark-done-circle-outline" size={18} color="#2E7D32" />
-                  </TouchableOpacity>
+                  {renderDateInput('actual', newProject.actualCompletionDate || '', '選擇日期', { backgroundColor: '#E8F5E9', borderColor: '#81C784' })}
                 </View>
               </View>
 
@@ -356,17 +389,11 @@ export default function ProjectsScreen() {
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.label}>驗收日期</Text>
-                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('inspection')}>
-                    <Text style={styles.dateBtnText}>{newProject.inspectionDate || '選擇日期'}</Text>
-                    <Ionicons name="calendar-outline" size={18} color="#666" />
-                  </TouchableOpacity>
+                  {renderDateInput('inspection', newProject.inspectionDate || '', '選擇日期')}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>複驗日期</Text>
-                  <TouchableOpacity style={styles.dateBtn} onPress={() => openDatePicker('reinspection')}>
-                    <Text style={styles.dateBtnText}>{newProject.reinspectionDate || '選擇日期'}</Text>
-                    <Ionicons name="calendar-outline" size={18} color="#666" />
-                  </TouchableOpacity>
+                  {renderDateInput('reinspection', newProject.reinspectionDate || '', '選擇日期')}
                 </View>
               </View>
 
@@ -379,8 +406,8 @@ export default function ProjectsScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Date Picker Component */}
-            {showDatePicker && (
+            {/* Native Date Picker Component */}
+            {showDatePicker && Platform.OS !== 'web' && (
               Platform.OS === 'ios' ? (
                 <Modal transparent animationType="fade">
                   <View style={styles.iosDatePickerContainer}>
@@ -389,10 +416,10 @@ export default function ProjectsScreen() {
                         value={tempDate}
                         mode="date"
                         display="spinner"
-                        onChange={onDateChange}
+                        onChange={onNativeDateChange}
                         style={{ height: 150 }}
                       />
-                      <TouchableOpacity style={styles.iosConfirmBtn} onPress={() => confirmDate(tempDate)}>
+                      <TouchableOpacity style={styles.iosConfirmBtn} onPress={() => confirmNativeDate(tempDate)}>
                         <Text style={styles.iosConfirmText}>確認</Text>
                       </TouchableOpacity>
                     </View>
@@ -403,7 +430,7 @@ export default function ProjectsScreen() {
                   value={tempDate}
                   mode="date"
                   display="default"
-                  onChange={onDateChange}
+                  onChange={onNativeDateChange}
                 />
               )
             )}
@@ -479,7 +506,7 @@ const styles = StyleSheet.create({
   smalldateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, justifyContent: 'center' },
 
   // Date Btn
-  dateBtn: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dateBtn: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 50 },
   dateBtnText: { color: '#333', fontSize: 16 },
 
   // Dropdown
