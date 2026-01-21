@@ -41,7 +41,7 @@ export default function LoginScreen() {
     setIsResetting(true);
     try {
       await sendPasswordResetEmail(auth, resetEmail);
-      Alert.alert('重設郵件已發送至您的信箱');
+      Alert.alert('重設郵件已發送，請檢查您的信箱（含垃圾郵件匣）。');
       setForgotModalVisible(false);
       setResetEmail('');
     } catch (error: any) {

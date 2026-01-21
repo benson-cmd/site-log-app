@@ -7,8 +7,8 @@ import { usePersonnel, Personnel } from '../../context/PersonnelContext';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user } = useUser();
-  const { getPersonnelByEmail, updatePersonnel, personnelList } = usePersonnel();
+  const { user, isLoading: isUserLoading } = useUser();
+  const { getPersonnelByEmail, updatePersonnel, personnelList, loading: isPersonnelLoading } = usePersonnel();
 
   const [profile, setProfile] = useState<Personnel | null>(null);
 
@@ -25,16 +25,16 @@ export default function ProfileScreen() {
   const [editForm, setEditForm] = useState<Personnel | null>(null);
 
   useEffect(() => {
-    if (user && user.email) {
+    if (user && user.email && personnelList.length > 0) {
       const p = getPersonnelByEmail(user.email);
       if (p) {
         setProfile(p);
       }
     }
-  }, [user, getPersonnelByEmail, personnelList]);
+  }, [user, personnelList]); // Removed getPersonnelByEmail dependency to avoid loop if unstable
 
-  // Loading State
-  if (!user || (!profile && !getPersonnelByEmail(user?.email || ''))) {
+  // Loading State: Wait for User check AND Personnel fetch
+  if (isUserLoading || isPersonnelLoading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#002147" />
@@ -44,20 +44,23 @@ export default function ProfileScreen() {
   }
 
   // Handle case where profile is not found after loading
-  // Ensure we display the latest data from context if profile state is stale or null
-  const activeProfile = getPersonnelByEmail(user?.email || '') || profile;
+  const activeProfile = profile || (user?.email ? getPersonnelByEmail(user.email) : null);
 
   if (!activeProfile) {
     return (
       <View style={styles.container}>
-        <SafeAreaView><Text style={{ textAlign: 'center', marginTop: 100, color: '#999' }}>找不到使用者資料 ({user?.email})</Text></SafeAreaView>
+        <SafeAreaView>
+          <Text style={{ textAlign: 'center', marginTop: 100, color: '#999' }}>
+            找不到使用者資料 ({user?.email || '未登入'})
+          </Text>
+          <TouchableOpacity onPress={() => router.replace('/')} style={{ marginTop: 20, alignSelf: 'center' }}>
+            <Text style={{ color: '#002147' }}>返回登入</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
       </View>
     )
   }
 
-  // Use activeProfile for rendering title/header
-  // Note: We use 'profile' state for other things, but let's sync them up.
-  // Actually, let's just use activeProfile for the render to avoid sync issues.
   const displayProfile = activeProfile;
 
   const handleEditOpen = () => {
