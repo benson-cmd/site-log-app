@@ -9,7 +9,7 @@ import { useLogs, LogEntry } from '../../context/LogContext';
 
 export default function LogsScreen() {
   const router = useRouter();
-  const { projects } = useProjects();
+  const { projects, updateProject } = useProjects();
   const { user } = useUser();
   const { logs, addLog, updateLog } = useLogs();
 
@@ -18,8 +18,8 @@ export default function LogsScreen() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [newLog, setNewLog] = useState<Partial<LogEntry>>({
-    project: '', date: '', weather: '', temperature: '', content: '', reporter: '', photos: []
+  const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
+    project: '', date: '', weather: '', temperature: '', content: '', reporter: '', photos: [], todayProgress: ''
   });
 
   // Project Selection
@@ -40,7 +40,8 @@ export default function LogsScreen() {
       temperature: '',
       content: '',
       reporter: user?.name || '使用者',
-      photos: []
+      photos: [],
+      todayProgress: ''
     });
     setEditingId(null);
     setIsEditMode(false);
@@ -52,21 +53,36 @@ export default function LogsScreen() {
   };
 
   const handleOpenEdit = (item: LogEntry) => {
-    setNewLog({ ...item });
+    setNewLog({ ...item, todayProgress: '' }); // Edit mode usually doesn't need to re-set progress unless specified, or we could fetch current project progress? unique handling needed.
+    // For now, allow editing fields but maybe not progress sync on edit unless explicitly changed?
+    // Let's keep it simple: progress is an 'input' to update project state at that moment.
     setEditingId(item.id);
     setIsEditMode(true);
     setAddModalVisible(true);
   };
 
-  const handleSubmitLog = () => {
+  const handleSubmitLog = async () => {
     if (!newLog.project || !newLog.content || !newLog.date) {
       Alert.alert('錯誤', '請填寫完整資訊 (專案、日期、內容)');
       return;
     }
 
+    // Sync Progress if provided
+    if (newLog.todayProgress) {
+      const progressVal = parseFloat(newLog.todayProgress);
+      if (!isNaN(progressVal)) {
+        // Find project
+        const targetProp = projects.find(p => p.name === newLog.project);
+        if (targetProp) {
+          await updateProject(targetProp.id, { currentActualProgress: progressVal });
+        }
+      }
+    }
+
     if (isEditMode && editingId) {
-      updateLog(editingId, newLog);
-      Alert.alert('成功', '日誌已更新');
+      const { todayProgress, ...logData } = newLog;
+      updateLog(editingId, logData);
+      Alert.alert('成功', '日誌已更新' + (newLog.todayProgress ? ' (進度已同步)' : ''));
     } else {
       const entry: Omit<LogEntry, 'id'> = {
         date: newLog.date!,
@@ -79,7 +95,7 @@ export default function LogsScreen() {
         photos: newLog.photos || []
       };
       addLog(entry);
-      Alert.alert('成功', '施工日誌已新增，等待審核');
+      Alert.alert('成功', '施工日誌已新增，等待審核' + (newLog.todayProgress ? ' (進度已同步)' : ''));
     }
     setAddModalVisible(false);
   };
@@ -221,21 +237,32 @@ export default function LogsScreen() {
                   <Ionicons name="chevron-down" size={20} color="#666" />
                 </TouchableOpacity>
               ) : (
-                <View style={styles.pickerContainer}>
-                  {projects.map(p => (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={styles.pickerItem}
-                      onPress={() => { setNewLog({ ...newLog, project: p.name }); setShowProjectPicker(false); }}
-                    >
-                      <Text style={styles.pickerText}>{p.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity style={[styles.pickerItem, { borderBottomWidth: 0 }]} onPress={() => setShowProjectPicker(false)}>
-                    <Text style={{ color: '#FF6B6B' }}>取消選擇</Text>
+                <View style={[styles.pickerContainer, { height: 150 }]}>
+                  <ScrollView nestedScrollEnabled>
+                    {projects.map(p => (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={styles.pickerItem}
+                        onPress={() => { setNewLog({ ...newLog, project: p.name }); setShowProjectPicker(false); }}
+                      >
+                        <Text style={styles.pickerText}>{p.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity style={[styles.pickerItem, { borderBottomWidth: 0, borderTopWidth: 1 }]} onPress={() => setShowProjectPicker(false)}>
+                    <Text style={{ color: '#FF6B6B' }}>關閉選單</Text>
                   </TouchableOpacity>
                 </View>
               )}
+
+              <Text style={styles.inputLabel}>今日實際累計進度 (%)</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="numeric"
+                placeholder="例如：35.5 (將同步至專案)"
+                value={newLog.todayProgress?.toString()}
+                onChangeText={t => setNewLog({ ...newLog, todayProgress: t })}
+              />
 
               <Text style={styles.inputLabel}>日期</Text>
               <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={newLog.date} onChangeText={t => setNewLog({ ...newLog, date: t })} />
@@ -278,7 +305,7 @@ export default function LogsScreen() {
             </ScrollView>
 
             <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitLog}>
-              <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更' : '提交日報表'}</Text>
+              <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更 & 同步' : '提交日報表 & 同步'}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>

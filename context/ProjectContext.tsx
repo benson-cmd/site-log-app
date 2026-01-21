@@ -10,23 +10,49 @@ export interface Extension {
   reason: string;     // 展延理由
 }
 
+export interface ChangeDesign {
+  id: string;
+  count: number;         // 第幾次變更
+  date: string;          // 議價/公文日期
+  docNumber: string;     // 公文文號
+  reason: string;        // 變更事由
+  newTotalAmount: number; // 變更後總價
+}
+
+export interface SchedulePoint {
+  date: string;
+  progress: number; // 0-100
+}
+
 export interface Project {
   id: string;
   name: string;
   address: string;
   manager: string;
-  progress: number;
-  status: 'planning' | 'construction' | 'completed' | 'suspended';
-  startDate?: string;          // 開工日
-  contractDuration?: number;   // 契約工期 (天)
-  extensions?: Extension[];    // 展延列表
+  progress: number; // calculated or manual
 
-  // New Fields
-  awardDate?: string;          // 決標日期
-  actualCompletionDate?: string; // 實際竣工日
-  inspectionDate?: string;     // 驗收日期
-  reinspectionDate?: string;   // 複驗日期
-  inspectionPassedDate?: string; // 驗收合格日
+  // Status & Dates
+  status: 'planning' | 'construction' | 'completed' | 'suspended'; // simple status (kept for back-compat or replaced?) users asked for dropdown
+  executionStatus: 'not_started' | 'started_prep' | 'construction' | 'completed' | 'inspection' | 'settlement';
+  startDate?: string;
+  contractDuration?: number;
+  extensions?: Extension[];
+
+  // Financial
+  contractAmount?: number;          // 原契約金額
+  changeDesigns?: ChangeDesign[];   // 變更設計明細
+  currentContractAmount?: number;   // 目前契約金額 (Auto-calc)
+
+  // Progress Tracking
+  scheduleData?: SchedulePoint[];   // 預定進度表 (CSV Imported)
+  currentActualProgress?: number;   // 最新實際進度 (Synced from Logs)
+
+  // Validations
+  awardDate?: string;
+  actualCompletionDate?: string;
+  inspectionDate?: string;
+  reinspectionDate?: string;
+  inspectionPassedDate?: string;
 }
 
 interface ProjectContextType {
@@ -42,7 +68,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   const [projects, setProjects] = useState<Project[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, "projects"), orderBy("name")); // Simple default sort
+    const q = query(collection(db, "projects"), orderBy("name"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Project[] = [];
       snapshot.forEach((doc) => {
@@ -56,7 +82,18 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
   const addProject = async (proj: Omit<Project, 'id'>) => {
     try {
-      await addDoc(collection(db, "projects"), proj);
+      // Auto-calc currentContractAmount
+      let currentAmount = proj.contractAmount || 0;
+      if (proj.changeDesigns && proj.changeDesigns.length > 0) {
+        // Take the last one's newTotalAmount
+        currentAmount = proj.changeDesigns[proj.changeDesigns.length - 1].newTotalAmount;
+      }
+
+      await addDoc(collection(db, "projects"), {
+        ...proj,
+        currentContractAmount: currentAmount,
+        currentActualProgress: proj.currentActualProgress || 0
+      });
     } catch (e) {
       console.error("Error adding project: ", e);
     }
@@ -64,8 +101,20 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
   const updateProject = async (id: string, data: Partial<Project>) => {
     try {
+      // If updating changeDesigns, re-calc currentContractAmount
+      let extraUpdates: any = {};
+      if (data.changeDesigns) {
+        if (data.changeDesigns.length > 0) {
+          extraUpdates.currentContractAmount = data.changeDesigns[data.changeDesigns.length - 1].newTotalAmount;
+        } else {
+          // Fallback to original? We might need to fetch doc to know, but partial update tricky.
+          // For now assume if provided, we use it. If list empty, maybe revert to base?
+          // Simplify: Just update if present.
+        }
+      }
+
       const docRef = doc(db, "projects", id);
-      await updateDoc(docRef, data);
+      await updateDoc(docRef, { ...data, ...extraUpdates });
     } catch (e) {
       console.error("Error updating project: ", e);
     }

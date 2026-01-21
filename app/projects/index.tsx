@@ -1,10 +1,12 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, StatusBar, Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView } from 'react-native';
-import React, { useState, useMemo } from 'react'; // Added React import for createElement
+import React, { useState, useMemo } from 'react';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
+import Papa from 'papaparse';
 import { useUser } from '../../context/UserContext';
-import { useProjects, Project, Extension } from '../../context/ProjectContext';
+import { useProjects, Project, Extension, ChangeDesign, SchedulePoint } from '../../context/ProjectContext';
 import { usePersonnel } from '../../context/PersonnelContext';
 
 const THEME = {
@@ -12,8 +14,22 @@ const THEME = {
   background: '#F5F7FA',
   card: '#ffffff',
   headerBg: '#002147',
-  text: '#333333'
+  text: '#333333',
+  danger: '#FF6B6B',
+  success: '#4CAF50',
+  warning: '#FF9800'
 };
+
+const EXECUTION_STATUS_MAP: Record<string, string> = {
+  not_started: '尚未開工',
+  started_prep: '開工尚未進場',
+  construction: '施工中',
+  completed: '完工',
+  inspection: '驗收中',
+  settlement: '結算'
+};
+
+const EXECUTION_STATUS_OPTIONS = Object.keys(EXECUTION_STATUS_MAP);
 
 export default function ProjectsScreen() {
   const router = useRouter();
@@ -27,21 +43,33 @@ export default function ProjectsScreen() {
 
   // Add Project Modal States
   const [isAddModalVisible, setAddModalVisible] = useState(false);
+
+  // Project Form State
   const [newProject, setNewProject] = useState<Partial<Project>>({
-    name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [],
-    awardDate: '', actualCompletionDate: '', inspectionDate: '', reinspectionDate: '', inspectionPassedDate: ''
+    name: '', address: '', manager: '',
+    status: 'planning', // Keeping generic status for now or replacing usage? Let's keep it but focus on executionStatus
+    executionStatus: 'not_started',
+    startDate: '', contractDuration: 0, progress: 0, extensions: [],
+    awardDate: '', actualCompletionDate: '', inspectionDate: '', reinspectionDate: '', inspectionPassedDate: '',
+    contractAmount: 0, changeDesigns: [], scheduleData: []
   });
 
   // Extension Inputs
   const [extForm, setExtForm] = useState({ days: '', date: '', docNumber: '', reason: '' });
 
+  // Change Design Inputs
+  const [cdForm, setCdForm] = useState({ date: '', docNumber: '', reason: '', newTotalAmount: '' });
+
   // Manager Dropdown
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const managers = useMemo(() => personnelList.map(p => p.name), [personnelList]);
 
+  // Execution Status Dropdown
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
+
   // Date Picker Logic (Native)
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [dateFieldTarget, setDateFieldTarget] = useState<'award' | 'start' | 'actual' | 'inspection' | 'reinspection' | 'passed' | 'extension'>('start');
+  const [dateFieldTarget, setDateFieldTarget] = useState<'award' | 'start' | 'actual' | 'inspection' | 'reinspection' | 'passed' | 'extension' | 'changeDesign'>('start');
   const [tempDate, setTempDate] = useState(new Date());
 
   // Helper for Native Picker
@@ -55,6 +83,7 @@ export default function ProjectsScreen() {
       else if (field === 'inspection' && newProject.inspectionDate) initialDate = new Date(newProject.inspectionDate);
       else if (field === 'reinspection' && newProject.reinspectionDate) initialDate = new Date(newProject.reinspectionDate);
       else if (field === 'extension' && extForm.date) initialDate = new Date(extForm.date);
+      else if (field === 'changeDesign' && cdForm.date) initialDate = new Date(cdForm.date);
     } catch (e) { }
 
     setTempDate(initialDate);
@@ -79,6 +108,8 @@ export default function ProjectsScreen() {
   const handleDateChange = (field: string, value: string) => {
     if (field === 'extension') {
       setExtForm(prev => ({ ...prev, date: value }));
+    } else if (field === 'changeDesign') {
+      setCdForm(prev => ({ ...prev, date: value }));
     } else if (field === 'award') {
       setNewProject(prev => ({ ...prev, awardDate: value }));
     } else if (field === 'start') {
@@ -92,10 +123,9 @@ export default function ProjectsScreen() {
     }
   };
 
-  // Date Input Component (Web/Native Split)
+  // Date Input Component
   const renderDateInput = (field: any, value: string, placeholder: string, customStyle?: any) => {
     if (Platform.OS === 'web') {
-      // Web Implementation: HTML5 Input
       return React.createElement('input', {
         type: 'date',
         value: value,
@@ -110,14 +140,12 @@ export default function ProjectsScreen() {
           fontSize: 16,
           color: '#333',
           width: '100%',
-          height: 50, // Match typical RN TextInput height
+          height: 50,
           boxSizing: 'border-box',
           ...customStyle
         }
       });
     }
-
-    // Native Implementation: TouchableOpacity -> Modal
     return (
       <TouchableOpacity
         style={[styles.dateBtn, customStyle]}
@@ -135,14 +163,32 @@ export default function ProjectsScreen() {
     return projects.filter(p => p.name.includes(searchText) || p.address.includes(searchText));
   }, [projects, searchText]);
 
-  // Render Logic
+  // Calc Planned Progress
+  const getPlannedProgress = (project: Project) => {
+    if (!project.scheduleData || project.scheduleData.length === 0) return 0;
+    const today = new Date().toISOString().split('T')[0];
+    // Find closest date <= today (assuming sorted)
+    let planned = 0;
+    // scheduleData should be sorted by date ideally
+    // Simple loop
+    for (let p of project.scheduleData) {
+      if (p.date <= today) {
+        planned = p.progress;
+      } else {
+        break;
+      }
+    }
+    return planned;
+  };
+
+  // Handlers
   const handleLogout = () => {
     setMenuVisible(false);
     logout();
     router.replace('/');
   };
 
-  // Add Item Logic
+  // Extension Handlers
   const handleAddExtension = () => {
     if (!extForm.days || !extForm.reason || !extForm.date) {
       Alert.alert('提示', '請填寫天數、公文日期與理由');
@@ -169,25 +215,126 @@ export default function ProjectsScreen() {
     }));
   };
 
-  // Auto Calculation
+  // Change Design Handlers
+  const handleAddChangeDesign = () => {
+    if (!cdForm.date || !cdForm.newTotalAmount || !cdForm.reason) {
+      Alert.alert('提示', '請填寫日期、變更後金額與事由');
+      return;
+    }
+    const count = (newProject.changeDesigns?.length || 0) + 1;
+    const newCd: ChangeDesign = {
+      id: Math.random().toString(36).substr(2, 9),
+      count,
+      date: cdForm.date,
+      docNumber: cdForm.docNumber,
+      reason: cdForm.reason,
+      newTotalAmount: parseFloat(cdForm.newTotalAmount) || 0
+    };
+    setNewProject(prev => ({
+      ...prev,
+      changeDesigns: [...(prev.changeDesigns || []), newCd]
+    }));
+    setCdForm({ date: '', docNumber: '', reason: '', newTotalAmount: '' });
+  };
+
+  const handleRemoveChangeDesign = (id: string) => {
+    setNewProject(prev => ({
+      ...prev,
+      changeDesigns: prev.changeDesigns?.filter(c => c.id !== id)
+    }));
+  };
+
+  // Schedule Import
+  const handleImportSchedule = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'application/vnd.ms-excel', 'text/comma-separated-values', 'text/plain'],
+        copyToCacheDirectory: true
+      });
+
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        const file = res.assets[0];
+
+        // In Web, we might have file object directly or uri to fetch
+        let content = '';
+        if (Platform.OS === 'web') {
+          // Fetch blob
+          const response = await fetch(file.uri);
+          content = await response.text();
+        } else {
+          // Native: Read likely needed via FileSystem, but papaparse might handle URI? 
+          // Simple approach: DocumentPicker gives URI. On native might need expo-file-system.
+          // For now, assuming web focus as requested. If Native, this might fail without FileSystem.readAsStringAsync
+          // Let's implement fetch workaround for native too (often works for local uri)
+          const response = await fetch(file.uri);
+          content = await response.text();
+        }
+
+        Papa.parse(content, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            // Expect columns: Date, Progress (or similar)
+            // Adapter to find likely columns
+            const parsedData: SchedulePoint[] = [];
+            results.data.forEach((row: any) => {
+              // Try to find Date and Progress keys case-insensitive
+              const keys = Object.keys(row);
+              const dateKey = keys.find(k => k.toLowerCase().includes('date') || k.includes('日期'));
+              const progKey = keys.find(k => k.toLowerCase().includes('progress') || k.includes('進度'));
+
+              if (dateKey && progKey) {
+                parsedData.push({
+                  date: row[dateKey],
+                  progress: parseFloat(row[progKey]) || 0
+                });
+              }
+            });
+
+            // Sort by date
+            parsedData.sort((a, b) => a.date.localeCompare(b.date));
+
+            if (parsedData.length > 0) {
+              setNewProject(prev => ({ ...prev, scheduleData: parsedData }));
+              Alert.alert('成功', `已匯入 ${parsedData.length} 筆進度資料`);
+            } else {
+              Alert.alert('錯誤', '無法解析 CSV，請確保有「日期」與「進度」欄位');
+            }
+          },
+          error: (err) => {
+            Alert.alert('匯入失敗', err.message);
+          }
+        });
+      }
+    } catch (err) {
+      console.log("Import Error", err);
+      Alert.alert('錯誤', '匯入失敗');
+    }
+  };
+
+  // Auto Calculations
   const calculateCompletionDate = () => {
     if (!newProject.startDate || !newProject.contractDuration) return '請輸入開工日與工期';
-
-    // Formula: (Start + Duration + Extensions - 1)
     const start = new Date(newProject.startDate);
     if (isNaN(start.getTime())) return '日期格式錯誤';
-
     const totalExtensions = newProject.extensions?.reduce((sum, ext) => sum + ext.days, 0) || 0;
     const totalDays = (parseInt(newProject.contractDuration.toString()) || 0) + totalExtensions - 1;
-
     const end = new Date(start);
     end.setDate(start.getDate() + totalDays);
-
     return end.toISOString().split('T')[0];
   };
 
   const completionDate = calculateCompletionDate();
 
+  const currentTotalAmount = useMemo(() => {
+    let amount = parseFloat(newProject.contractAmount?.toString() || '0');
+    if (newProject.changeDesigns && newProject.changeDesigns.length > 0) {
+      amount = newProject.changeDesigns[newProject.changeDesigns.length - 1].newTotalAmount;
+    }
+    return amount;
+  }, [newProject.contractAmount, newProject.changeDesigns]);
+
+  // Submit
   const handleSubmitProject = () => {
     if (!newProject.name || !newProject.startDate) {
       Alert.alert('錯誤', '專案名稱與開工日為必填');
@@ -195,27 +342,24 @@ export default function ProjectsScreen() {
     }
 
     addProject({
-      name: newProject.name!,
-      address: newProject.address || '',
-      manager: newProject.manager || '',
-      progress: 0,
-      status: 'planning', // Default
-      startDate: newProject.startDate,
+      ...newProject,
+      contractAmount: parseFloat(newProject.contractAmount?.toString() || '0'),
       contractDuration: parseInt(newProject.contractDuration?.toString() || '0'),
       extensions: newProject.extensions || [],
-      awardDate: newProject.awardDate,
-      actualCompletionDate: newProject.actualCompletionDate,
-      inspectionDate: newProject.inspectionDate,
-      reinspectionDate: newProject.reinspectionDate
+      changeDesigns: newProject.changeDesigns || [],
+      scheduleData: newProject.scheduleData || [],
+      currentActualProgress: newProject.currentActualProgress || 0,
     } as any);
 
     setAddModalVisible(false);
-    // Reset Form
-    setNewProject({ name: '', address: '', manager: '', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [], awardDate: '', actualCompletionDate: '', inspectionDate: '', reinspectionDate: '' });
+    // Reset
+    setNewProject({ name: '', address: '', manager: '', executionStatus: 'not_started', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [], contractAmount: 0, changeDesigns: [], scheduleData: [] });
     setExtForm({ days: '', date: '', docNumber: '', reason: '' });
+    setCdForm({ date: '', docNumber: '', reason: '', newTotalAmount: '' });
     Alert.alert('成功', '專案已新增');
   };
 
+  // Render components
   const MenuItem = ({ icon, label, onPress, isLogout = false, isActive = false }: any) => (
     <TouchableOpacity style={[styles.menuItem, isActive && styles.menuItemActive]} onPress={onPress}>
       <Ionicons name={icon} size={24} color={isLogout ? '#FF6B6B' : (isActive ? THEME.primary : '#fff')} />
@@ -239,7 +383,7 @@ export default function ProjectsScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Search & List */}
+      {/* Content */}
       <View style={styles.contentContainer}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color="#999" />
@@ -255,30 +399,51 @@ export default function ProjectsScreen() {
           data={filteredProjects}
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: 15 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} onPress={() => router.push(`/projects/${item.id}`)}>
-              <View style={styles.cardHeader}>
-                <View style={[styles.statusTag, { backgroundColor: item.status === 'construction' ? '#E3F2FD' : '#F5F5F5' }]}>
-                  <Text style={{ color: item.status === 'construction' ? '#002147' : '#666', fontSize: 12, fontWeight: 'bold' }}>
-                    {item.status === 'construction' ? '施工中' : item.status === 'planning' ? '規劃中' : '已完工'}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </View>
-              <Text style={styles.projectTitle}>{item.name}</Text>
-              <Text style={styles.projectInfo}>📍 {item.address}</Text>
-              <Text style={styles.projectInfo}>👷 主任：{item.manager}</Text>
-              {item.awardDate && <Text style={styles.projectInfo}>📅 決標：{item.awardDate}</Text>}
+          renderItem={({ item }) => {
+            const actual = item.currentActualProgress || 0;
+            const planned = getPlannedProgress(item);
+            const diff = actual - planned;
+            const isBehind = diff < 0;
 
-              {/* Progress Bar */}
-              <View style={styles.progressContainer}>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressBar, { width: `${item.progress}%` }]} />
+            return (
+              <TouchableOpacity style={styles.card} onPress={() => router.push(`/projects/${item.id}`)}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.statusTag, { backgroundColor: '#E3F2FD' }]}>
+                    <Text style={{ color: '#002147', fontSize: 12, fontWeight: 'bold' }}>
+                      {EXECUTION_STATUS_MAP[item.executionStatus || 'not_started']}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
                 </View>
-                <Text style={styles.progressText}>{item.progress}%</Text>
-              </View>
-            </TouchableOpacity>
-          )}
+                <Text style={styles.projectTitle}>{item.name}</Text>
+                <Text style={styles.projectInfo}>📍 {item.address}</Text>
+
+                {/* Financial Overview */}
+                <Text style={styles.projectInfo}>💰 契約：${item.currentContractAmount?.toLocaleString() || item.contractAmount?.toLocaleString()}</Text>
+
+                {/* Dual Progress Bar */}
+                <View style={styles.progressSection}>
+                  <View style={styles.progressLabels}>
+                    <Text style={styles.progressLabelText}>
+                      實際: <Text style={{ fontWeight: 'bold' }}>{actual}%</Text>
+                    </Text>
+                    <Text style={styles.progressLabelText}>
+                      預定: <Text style={{ fontWeight: 'bold' }}>{planned}%</Text>
+                    </Text>
+                    <Text style={[styles.progressStatus, { color: isBehind ? THEME.danger : THEME.success }]}>
+                      {isBehind ? `🔴 落後 ${Math.abs(diff).toFixed(1)}%` : `🟢 正常 +${diff.toFixed(1)}%`}
+                    </Text>
+                  </View>
+                  <View style={styles.progressTrack}>
+                    {/* Actual Bar */}
+                    <View style={[styles.progressBar, { width: `${Math.min(actual, 100)}%` }]} />
+                    {/* Planned Marker (Vertical Line) */}
+                    <View style={[styles.plannedMarker, { left: `${Math.min(planned, 100)}%` }]} />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="folder-open-outline" size={64} color="#ccc" />
@@ -313,20 +478,40 @@ export default function ProjectsScreen() {
               <Text style={styles.label}>地址</Text>
               <TextInput style={styles.input} value={newProject.address} onChangeText={t => setNewProject({ ...newProject, address: t })} placeholder="輸入專案地址" />
 
-              <Text style={styles.label}>工地主任</Text>
-              <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowManagerPicker(!showManagerPicker)}>
-                <Text style={styles.dropdownBtnText}>{newProject.manager || '請選擇工地主任'}</Text>
-                <Ionicons name="chevron-down" size={20} color="#666" />
-              </TouchableOpacity>
-              {showManagerPicker && (
-                <View style={styles.dropdownList}>
-                  {managers.map((mgr, idx) => (
-                    <TouchableOpacity key={idx} style={styles.dropdownItem} onPress={() => { setNewProject({ ...newProject, manager: mgr }); setShowManagerPicker(false); }}>
-                      <Text style={styles.dropdownItemText}>{mgr}</Text>
-                    </TouchableOpacity>
-                  ))}
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.label}>工地主任</Text>
+                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowManagerPicker(!showManagerPicker)}>
+                    <Text style={styles.dropdownBtnText}>{newProject.manager || '請選擇'}</Text>
+                    <Ionicons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+                  {showManagerPicker && (
+                    <View style={[styles.dropdownList, { zIndex: 999 }]}>
+                      {managers.map((mgr, idx) => (
+                        <TouchableOpacity key={idx} style={styles.dropdownItem} onPress={() => { setNewProject({ ...newProject, manager: mgr }); setShowManagerPicker(false); }}>
+                          <Text style={styles.dropdownItemText}>{mgr}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
-              )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>執行狀態</Text>
+                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowStatusPicker(!showStatusPicker)}>
+                    <Text style={styles.dropdownBtnText}>{EXECUTION_STATUS_MAP[newProject.executionStatus || 'not_started']}</Text>
+                    <Ionicons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+                  {showStatusPicker && (
+                    <View style={[styles.dropdownList, { zIndex: 999 }]}>
+                      {EXECUTION_STATUS_OPTIONS.map((status) => (
+                        <TouchableOpacity key={status} style={styles.dropdownItem} onPress={() => { setNewProject({ ...newProject, executionStatus: status as any }); setShowStatusPicker(false); }}>
+                          <Text style={styles.dropdownItemText}>{EXECUTION_STATUS_MAP[status]}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
 
               <Text style={styles.groupHeader}>時程管理</Text>
               <View style={styles.row}>
@@ -342,6 +527,19 @@ export default function ProjectsScreen() {
 
               <Text style={styles.label}>契約工期 (天)</Text>
               <TextInput style={styles.input} value={newProject.contractDuration?.toString()} onChangeText={t => setNewProject({ ...newProject, contractDuration: parseInt(t) || 0 })} keyboardType="number-pad" placeholder="600" />
+
+              {/* Schedule Import */}
+              <View style={{ marginTop: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ fontWeight: 'bold', color: '#333' }}>預定進度表</Text>
+                <TouchableOpacity style={styles.importBtn} onPress={handleImportSchedule}>
+                  <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
+                  <Text style={{ color: '#fff', marginLeft: 5 }}>匯入 CSV</Text>
+                </TouchableOpacity>
+              </View>
+              {newProject.scheduleData && newProject.scheduleData.length > 0 && (
+                <Text style={{ color: THEME.success, fontSize: 12, marginTop: 5 }}>✓ 已匯入 {newProject.scheduleData.length} 筆進度資料</Text>
+              )}
+
 
               {/* Extension Logic */}
               <View style={styles.extensionSection}>
@@ -368,15 +566,14 @@ export default function ProjectsScreen() {
                     <TextInput style={[styles.smallInput, { flex: 2, marginLeft: 5 }]} placeholder="展延理由" value={extForm.reason} onChangeText={t => setExtForm({ ...extForm, reason: t })} />
                   </View>
                   <TouchableOpacity style={styles.addExtBtn} onPress={handleAddExtension}>
-                    <Text style={{ color: '#fff', fontSize: 12 }}>加入展延清單</Text>
+                    <Text style={{ color: '#fff', fontSize: 12 }}>加入展延</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* Auto Calculation Result & Actual Completion */}
               <View style={styles.calcRow}>
                 <View style={[styles.calcResultBox, { flex: 1, marginRight: 5 }]}>
-                  <Text style={styles.calcLabel}>預定竣工日 (自動)</Text>
+                  <Text style={styles.calcLabel}>預定竣工日</Text>
                   <Text style={styles.calcValue}>{completionDate}</Text>
                 </View>
                 <View style={{ flex: 1, marginLeft: 5 }}>
@@ -384,6 +581,44 @@ export default function ProjectsScreen() {
                   {renderDateInput('actual', newProject.actualCompletionDate || '', '選擇日期', { backgroundColor: '#E8F5E9', borderColor: '#81C784' })}
                 </View>
               </View>
+
+              <Text style={styles.groupHeader}>金額與變更設計</Text>
+              <Text style={styles.label}>契約金額 (元)</Text>
+              <TextInput style={styles.input} value={newProject.contractAmount?.toString()} onChangeText={t => setNewProject({ ...newProject, contractAmount: parseFloat(t) || 0 })} keyboardType="number-pad" placeholder="1000000" />
+
+              <Text style={styles.label}>目前契約總價 (自動計算)</Text>
+              <TextInput style={[styles.input, { backgroundColor: '#eee' }]} value={currentTotalAmount.toLocaleString()} editable={false} />
+
+              <View style={styles.extensionSection}>
+                <Text style={styles.sectionTitle}>變更設計明細</Text>
+                {newProject.changeDesigns?.map((cd, idx) => (
+                  <View key={cd.id} style={styles.extItem}>
+                    <Text style={styles.extText}>第{cd.count}次變更 ({cd.date}) - ${cd.newTotalAmount.toLocaleString()}</Text>
+                    <Text style={styles.extReason}>{cd.docNumber} / {cd.reason}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveChangeDesign(cd.id)} style={styles.removeExt}>
+                      <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                <View style={styles.addExtBox}>
+                  <View style={{ flexDirection: 'row' }}>
+                    <View style={{ flex: 1, marginRight: 5 }}>
+                      {renderDateInput('changeDesign', cdForm.date || '', '日期', { height: 35, padding: 8, fontSize: 13, backgroundColor: '#fff', borderRadius: 6 })}
+                    </View>
+                    <TextInput style={[styles.smallInput, { flex: 1.5 }]} placeholder="變更後總價" keyboardType="number-pad" value={cdForm.newTotalAmount} onChangeText={t => setCdForm({ ...cdForm, newTotalAmount: t })} />
+                  </View>
+                  <View style={[styles.row, { marginTop: 5 }]}>
+                    <TextInput style={[styles.smallInput, { flex: 1 }]} placeholder="文號" value={cdForm.docNumber} onChangeText={t => setCdForm({ ...cdForm, docNumber: t })} />
+                    <TextInput style={[styles.smallInput, { flex: 2, marginLeft: 5 }]} placeholder="變更事由" value={cdForm.reason} onChangeText={t => setCdForm({ ...cdForm, reason: t })} />
+                  </View>
+                  <TouchableOpacity style={styles.addExtBtn} onPress={handleAddChangeDesign}>
+                    <Text style={{ color: '#fff', fontSize: 12 }}>加入變更設計</Text>
+                  </TouchableOpacity>
+                </View>
+
+              </View>
+
 
               <Text style={styles.groupHeader}>驗收日期</Text>
               <View style={styles.row}>
@@ -406,7 +641,7 @@ export default function ProjectsScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Native Date Picker Component */}
+            {/* Native Picker Modal */}
             {showDatePicker && Platform.OS !== 'web' && (
               Platform.OS === 'ios' ? (
                 <Modal transparent animationType="fade">
@@ -438,7 +673,7 @@ export default function ProjectsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Side Menu (Reused) */}
+      {/* Side Menu */}
       <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <View style={styles.menuOverlay}>
           <View style={styles.sideMenu}>
@@ -484,10 +719,16 @@ const styles = StyleSheet.create({
   statusTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   projectTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   projectInfo: { color: '#666', marginTop: 5 },
-  progressContainer: { marginTop: 15, flexDirection: 'row', alignItems: 'center' },
-  progressTrack: { flex: 1, height: 6, backgroundColor: '#eee', borderRadius: 3, marginRight: 10 },
-  progressBar: { height: 6, backgroundColor: THEME.primary, borderRadius: 3 },
-  progressText: { fontSize: 12, fontWeight: 'bold', color: THEME.primary },
+
+  // Progress
+  progressSection: { marginTop: 15 },
+  progressLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5, alignItems: 'center' },
+  progressLabelText: { fontSize: 12, color: '#666' },
+  progressStatus: { fontSize: 12, fontWeight: 'bold' },
+
+  progressTrack: { height: 12, backgroundColor: '#eee', borderRadius: 6, position: 'relative' },
+  progressBar: { height: 12, backgroundColor: THEME.primary, borderRadius: 6 },
+  plannedMarker: { position: 'absolute', top: -4, bottom: -4, width: 2, backgroundColor: '#333', opacity: 0.6, zIndex: 2 },
 
   fab: { position: 'absolute', right: 20, bottom: 30, width: 60, height: 60, borderRadius: 30, backgroundColor: THEME.primary, justifyContent: 'center', alignItems: 'center', elevation: 5 },
   emptyState: { alignItems: 'center', marginTop: 80 },
@@ -503,7 +744,6 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16 },
   row: { flexDirection: 'row' },
   smallInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, fontSize: 13 },
-  smalldateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, justifyContent: 'center' },
 
   // Date Btn
   dateBtn: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 50 },
@@ -512,11 +752,11 @@ const styles = StyleSheet.create({
   // Dropdown
   dropdownBtn: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dropdownBtnText: { fontSize: 16, color: '#333' },
-  dropdownList: { borderWidth: 1, borderColor: '#eee', borderRadius: 8, marginTop: 5, backgroundColor: '#fff', elevation: 3 },
+  dropdownList: { borderWidth: 1, borderColor: '#eee', borderRadius: 8, marginTop: 5, backgroundColor: '#fff', elevation: 3, position: 'absolute', top: 50, left: 0, right: 0 },
   dropdownItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   dropdownItemText: { fontSize: 16, color: '#333' },
 
-  // Extension
+  // Extension & Changes
   extensionSection: { marginTop: 25, backgroundColor: '#F0F4F8', padding: 15, borderRadius: 10 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#002147', marginBottom: 10 },
   addExtBox: { marginTop: 10, borderTopWidth: 1, borderColor: '#ddd', paddingTop: 10 },
@@ -525,6 +765,9 @@ const styles = StyleSheet.create({
   extText: { fontWeight: 'bold', color: '#333', fontSize: 14 },
   extReason: { color: '#666', fontSize: 12 },
   removeExt: { position: 'absolute', top: 10, right: 10 },
+
+  // Import
+  importBtn: { backgroundColor: '#4CAF50', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 4, flexDirection: 'row', alignItems: 'center' },
 
   // Calc Result
   calcRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20 },
@@ -541,13 +784,15 @@ const styles = StyleSheet.create({
   iosConfirmBtn: { backgroundColor: THEME.primary, padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10 },
   iosConfirmText: { color: '#fff', fontWeight: 'bold' },
 
-  // Helper
-  groupHeader: { fontSize: 13, fontWeight: 'bold', color: '#999', backgroundColor: '#f0f0f0', padding: 5, marginTop: 15 },
+  // Menu
   menuOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)' },
   sideMenu: { width: '80%', backgroundColor: '#002147', height: '100%' },
   menuHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   menuTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
   menuItem: { flexDirection: 'row', paddingVertical: 15, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
   menuItemActive: { backgroundColor: 'rgba(198,156,109,0.1)' },
-  menuItemText: { color: '#fff', marginLeft: 15, fontSize: 16 }
+  menuItemText: { color: '#fff', marginLeft: 15, fontSize: 16 },
+
+  // Helper
+  groupHeader: { fontSize: 13, fontWeight: 'bold', color: '#999', backgroundColor: '#f0f0f0', padding: 5, marginTop: 15 }
 });
