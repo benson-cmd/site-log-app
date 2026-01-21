@@ -132,7 +132,7 @@ export default function DashboardScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.welcomeText}>
-          👋 您好, <Text style={styles.userName}>{user?.name || '使用者'}</Text>!
+          👋 您好, <Text style={styles.userName}>{user?.name || '使用者'} {user?.role ? `(${user.role})` : ''}</Text>!
         </Text>
 
         {/* Announcement Section */}

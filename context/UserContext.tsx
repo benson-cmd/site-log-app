@@ -1,10 +1,13 @@
 import React, { createContext, useState, useContext, ReactNode } from 'react';
+import { db } from '../src/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
-// 定義 User 型別，避免使用 any
-interface User {
+// 定義 User 型別
+export interface User {
   email: string;
-  role: string;
+  role?: string; // 職稱
   name?: string;
+  department?: string;
 }
 
 interface UserContextType {
@@ -23,18 +26,42 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, pass: string): Promise<boolean> => {
     try {
       setIsLoading(true);
-      // 模擬 API 請求延遲
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // 簡易驗證邏輯
-      if (email.trim() && pass.trim()) {
-        setUser({ 
-          email, 
-          role: 'admin',
-          name: '吳資彬' // 範例名稱
+
+      // 1. Hardcoded Backup Account
+      if (email === 'wu@dwcc.com.tw' && pass === '0720117') {
+        setUser({
+          email: 'wu@dwcc.com.tw',
+          name: '吳資彬', // Backup Name
+          role: '系統管理員(備援)',
+          department: '總經理室'
         });
         return true;
       }
+
+      // 2. Firestore Verification
+      const q = query(collection(db, "personnel"), where("email", "==", email));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        return false;
+      }
+
+      const docSnapshot = querySnapshot.docs[0];
+      const userData = docSnapshot.data();
+
+      // Password Check: initialPassword or custom password
+      const validPwd = userData.initialPassword === pass || userData.password === pass;
+
+      if (validPwd) {
+        setUser({
+          email: userData.email,
+          name: userData.name,
+          role: userData.title || '員工',
+          department: userData.department
+        });
+        return true;
+      }
+
       return false;
     } catch (error) {
       console.error('Login error:', error);
