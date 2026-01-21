@@ -41,17 +41,20 @@ export default function LoginScreen() {
     setIsResetting(true);
     try {
       await sendPasswordResetEmail(auth, resetEmail);
-      Alert.alert('成功', '重設密碼信件已發送至您的信箱，請查看。');
+      Alert.alert('重設郵件已發送！', '請檢查您的電子信箱（包含垃圾郵件匣）。');
       setForgotModalVisible(false);
       setResetEmail('');
     } catch (error: any) {
       console.error("Reset Error", error);
-      // Fallback for custom auth users who are not in Firebase Auth
       let msg = '發送失敗，請稍後再試。';
-      if (error.code === 'auth/user-not-found') {
-        msg = '此 Email 尚未註冊 Firebase 驗證帳號。\n(若您使用預設帳號登入，請直接聯繫系統管理員重置)';
+
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-email') {
+        msg = '找不到此帳號，請確認 Email 是否正確。';
+      } else if (error.code === 'auth/network-request-failed') {
+        msg = '網路連線不穩定，請檢查您的網路狀態。';
       }
-      Alert.alert('重設失敗', msg);
+
+      Alert.alert('發送失敗', msg);
     } finally {
       setIsResetting(false);
     }

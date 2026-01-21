@@ -61,7 +61,12 @@ export default function PersonnelScreen() {
   const handleOpenEdit = (person: Personnel) => {
     setIsEditMode(true);
     setCurrentId(person.id);
-    setFormData({ ...person });
+    setFormData({
+      ...person,
+      licenses: person.licenses || [],
+      education: person.education || [],
+      experience: person.experience || []
+    });
     setModalVisible(true);
   };
 
