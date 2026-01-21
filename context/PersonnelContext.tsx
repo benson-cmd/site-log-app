@@ -1,4 +1,6 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import { db } from '../src/lib/firebase';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
 export interface Education {
     school: string;
@@ -29,63 +31,59 @@ export interface Personnel {
 
 interface PersonnelContextType {
     personnelList: Personnel[];
-    addPersonnel: (person: Omit<Personnel, 'id'>) => void;
-    updatePersonnel: (id: string, updatedData: Partial<Personnel>) => void;
-    deletePersonnel: (id: string) => void;
+    loading: boolean;
+    addPersonnel: (person: Omit<Personnel, 'id'>) => Promise<void>;
+    updatePersonnel: (id: string, updatedData: Partial<Personnel>) => Promise<void>;
+    deletePersonnel: (id: string) => Promise<void>;
     getPersonnelByEmail: (email: string) => Personnel | undefined;
 }
 
 const PersonnelContext = createContext<PersonnelContextType | null>(null);
 
 export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
-    const [personnelList, setPersonnelList] = useState<Personnel[]>([
-        {
-            id: '1',
-            name: '吳資彬',
-            title: '副總經理',
-            email: 'wu@dwcc.com.tw',
-            phone: '0988-967-900',
-            startDate: '2017-07-17',
-            birthDate: '1988-05-20',
-            department: '工務部',
-            initialPassword: '0770520',
-            licenses: ['工地主任', '品管工程師', '勞安乙級'],
-            education: [
-                { school: '國立成功大學', degree: '土木工程系 學士', year: '2010' },
-                { school: '國立交通大學', degree: '土木工程研究所 碩士', year: '2012' }
-            ],
-            experience: [
-                { company: '大陸工程', role: '專案經理', duration: '2012 - 2017' },
-                { company: 'DW營造', role: '副總經理', duration: '2017 - Present' }
-            ]
-        },
-        {
-            id: '2',
-            name: '陳曉華',
-            title: '專案經理',
-            email: 'chen@dwcc.com.tw',
-            phone: '0912-345-678',
-            startDate: '2019-03-01',
-            birthDate: '1990-01-01',
-            department: '工務部',
-            initialPassword: '0790101',
-            education: [],
-            experience: [],
-            licenses: []
+    const [personnelList, setPersonnelList] = useState<Personnel[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    // Fetch from Firestore
+    useEffect(() => {
+        const q = query(collection(db, "personnel"), orderBy("name"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list: Personnel[] = [];
+            snapshot.forEach((doc) => {
+                list.push({ id: doc.id, ...doc.data() } as Personnel);
+            });
+            setPersonnelList(list);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const addPersonnel = async (person: Omit<Personnel, 'id'>) => {
+        try {
+            await addDoc(collection(db, "personnel"), person);
+        } catch (e) {
+            console.error("Error adding personnel: ", e);
+            throw e;
         }
-    ]);
-
-    const addPersonnel = (person: Omit<Personnel, 'id'>) => {
-        const newPerson = { ...person, id: Math.random().toString(36).substr(2, 9) };
-        setPersonnelList(prev => [...prev, newPerson]);
     };
 
-    const updatePersonnel = (id: string, updatedData: Partial<Personnel>) => {
-        setPersonnelList(prev => prev.map(p => p.id === id ? { ...p, ...updatedData } : p));
+    const updatePersonnel = async (id: string, updatedData: Partial<Personnel>) => {
+        try {
+            const docRef = doc(db, "personnel", id);
+            await updateDoc(docRef, updatedData);
+        } catch (e) {
+            console.error("Error updating personnel: ", e);
+            throw e;
+        }
     };
 
-    const deletePersonnel = (id: string) => {
-        setPersonnelList(prev => prev.filter(p => p.id !== id));
+    const deletePersonnel = async (id: string) => {
+        try {
+            await deleteDoc(doc(db, "personnel", id));
+        } catch (e) {
+            console.error("Error deleting personnel: ", e);
+            throw e;
+        }
     };
 
     const getPersonnelByEmail = (email: string) => {
@@ -93,7 +91,7 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return (
-        <PersonnelContext.Provider value={{ personnelList, addPersonnel, updatePersonnel, deletePersonnel, getPersonnelByEmail }}>
+        <PersonnelContext.Provider value={{ personnelList, loading, addPersonnel, updatePersonnel, deletePersonnel, getPersonnelByEmail }}>
             {children}
         </PersonnelContext.Provider>
     );

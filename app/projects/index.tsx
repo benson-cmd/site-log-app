@@ -204,6 +204,8 @@ export default function ProjectsScreen() {
       { text: '取消', style: 'cancel' },
       {
         text: '確認刪除', style: 'destructive', onPress: async () => {
+          alert('開始執行刪除...');
+          console.log('正在刪除專案 ID:', id);
           await deleteProject(id);
           Alert.alert('已刪除', '專案已成功移除');
         }

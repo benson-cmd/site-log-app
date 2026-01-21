@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextI
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
+import DateTimePicker from '@react-native-community/datetimepicker'; // Need this for Native, though user asked for HTML5 input on web
 import { usePersonnel, Personnel, Education, Experience } from '../../context/PersonnelContext';
 
 const DEPARTMENTS = ['總經理室', '工務部', '採購部', '行政部'];
@@ -25,6 +26,11 @@ export default function PersonnelScreen() {
   const [eduInput, setEduInput] = useState<Education>({ school: '', degree: '', year: '' });
   const [expInput, setExpInput] = useState<Experience>({ company: '', role: '', duration: '' });
 
+  // Date Picker State (Native)
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateTarget, setDateTarget] = useState<'start' | 'birth'>('start');
+  const [tempDate, setTempDate] = useState(new Date());
+
   // Helper: Generate ROC Password
   const generateROCPassword = (dateStr: string) => {
     if (!dateStr || dateStr.length !== 10) return ''; // Expect YYYY-MM-DD
@@ -33,7 +39,6 @@ export default function PersonnelScreen() {
     const year = parseInt(parts[0]);
     const rocYear = year - 1911;
     if (rocYear < 0) return '';
-    // Pad to 3 digits (e.g. 72 -> 072, 100 -> 100)
     const rocYearStr = rocYear.toString().padStart(3, '0');
     const month = parts[1];
     const day = parts[2];
@@ -57,13 +62,25 @@ export default function PersonnelScreen() {
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('刪除確認', '確定要刪除此人員資料嗎？', [
+    Alert.alert('刪除確認', '確定要刪除此人員資料嗎？此操作無法復原。', [
       { text: '取消', style: 'cancel' },
-      { text: '刪除', style: 'destructive', onPress: () => deletePersonnel(id) }
+      {
+        text: '刪除',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deletePersonnel(id);
+            Alert.alert('操作成功', '人員已刪除');
+            setModalVisible(false);
+          } catch (e) {
+            Alert.alert('錯誤', '刪除失敗');
+          }
+        }
+      }
     ]);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name || !formData.email || !formData.startDate || !formData.birthDate) {
       Alert.alert('錯誤', '姓名、Email、到職日、生日為必填欄位');
       return;
@@ -74,17 +91,24 @@ export default function PersonnelScreen() {
     if (!isEditMode && formData.birthDate) {
       const pwd = generateROCPassword(formData.birthDate);
       finalData.initialPassword = pwd;
-      Alert.alert('提示', `已自動生成初始密碼：${pwd}`);
     }
 
-    if (isEditMode) {
-      updatePersonnel(currentId, finalData);
-      Alert.alert('成功', '資料已更新');
-    } else {
-      addPersonnel(finalData as Personnel);
-      Alert.alert('成功', '人員已新增');
+    try {
+      if (isEditMode) {
+        await updatePersonnel(currentId, finalData);
+        Alert.alert('操作成功', '資料已更新');
+      } else {
+        // New user: Alert password
+        if (finalData.initialPassword) Alert.alert('操作成功', `人員已新增，初始密碼為：${finalData.initialPassword}`);
+        else Alert.alert('操作成功', '人員已新增');
+
+        await addPersonnel(finalData as Personnel);
+      }
+      setModalVisible(false);
+    } catch (e) {
+      Alert.alert('錯誤', '儲存失敗，請重試');
+      console.error(e);
     }
-    setModalVisible(false);
   };
 
   // Sub-list Handlers
@@ -118,8 +142,57 @@ export default function PersonnelScreen() {
     setFormData(prev => ({ ...prev, experience: prev.experience?.filter((_, i) => i !== idx) }));
   };
 
+  // Date Picker Helpers
+  const handleDateChange = (type: 'start' | 'birth', value: string) => {
+    if (type === 'start') setFormData(prev => ({ ...prev, startDate: value }));
+    else setFormData(prev => ({ ...prev, birthDate: value }));
+  };
+
+  const openNativeDatePicker = (type: 'start' | 'birth') => {
+    setDateTarget(type);
+    const currentVal = type === 'start' ? formData.startDate : formData.birthDate;
+    if (currentVal) setTempDate(new Date(currentVal));
+    else setTempDate(new Date());
+    setShowDatePicker(true);
+  };
+
+  const onNativeDateConfirm = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (selectedDate) {
+      const str = selectedDate.toISOString().split('T')[0];
+      handleDateChange(dateTarget, str);
+    }
+  };
+
+  const renderDateInput = (type: 'start' | 'birth', value: string, placeholder: string) => {
+    if (Platform.OS === 'web') {
+      return (
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => handleDateChange(type, e.target.value)}
+          style={{
+            flex: 1, padding: 12, backgroundColor: '#F9F9F9',
+            borderWidth: 1, borderColor: '#ddd', borderRadius: 8,
+            fontSize: 15, marginBottom: 0,
+            boxSizing: 'border-box', // Ensure padding included in width
+            width: '100%'
+          }}
+          placeholder={placeholder}
+        />
+      );
+    }
+    return (
+      <TouchableOpacity style={styles.dateBtn} onPress={() => openNativeDatePicker(type)}>
+        <Text style={{ color: value ? '#333' : '#999' }}>{value || placeholder}</Text>
+        <Ionicons name="calendar-outline" size={18} color="#666" />
+      </TouchableOpacity>
+    );
+  };
+
   const PersonnelCard = ({ item }: { item: Personnel }) => {
     const tenure = (() => {
+      if (!item.startDate) return 0;
       const start = new Date(item.startDate);
       const now = new Date();
       const diff = now.getFullYear() - start.getFullYear();
@@ -130,7 +203,7 @@ export default function PersonnelScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+            <Text style={styles.avatarText}>{item.name ? item.name.charAt(0) : '?'}</Text>
           </View>
           <View style={styles.headerInfo}>
             <Text style={styles.name}>{item.name} <Text style={styles.title}>({item.title})</Text></Text>
@@ -186,7 +259,7 @@ export default function PersonnelScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.formBody}>
+            <ScrollView style={styles.formBody} showsVerticalScrollIndicator={true}>
               <Text style={styles.sectionHeader}>基本資料</Text>
               <TextInput style={styles.input} placeholder="姓名 *" value={formData.name} onChangeText={t => setFormData({ ...formData, name: t })} />
               <TextInput style={styles.input} placeholder="職稱 *" value={formData.title} onChangeText={t => setFormData({ ...formData, title: t })} />
@@ -204,17 +277,25 @@ export default function PersonnelScreen() {
                 ))}
               </View>
 
-              <TextInput style={styles.input} placeholder="Email (必填) *" value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} keyboardType="email-address" autoCapitalize="none" />
+              <Text style={styles.label}>帳號與 Email (綁定) *</Text>
+              <TextInput style={styles.input} placeholder="Email" value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} keyboardType="email-address" autoCapitalize="none" />
+
               <TextInput style={styles.input} placeholder="電話" value={formData.phone} onChangeText={t => setFormData({ ...formData, phone: t })} keyboardType="phone-pad" />
 
               <View style={styles.row}>
-                <TextInput style={[styles.input, { flex: 1, marginRight: 5 }]} placeholder="到職日 (YYYY-MM-DD)" value={formData.startDate} onChangeText={t => setFormData({ ...formData, startDate: t })} />
-                <TextInput style={[styles.input, { flex: 1, marginLeft: 5 }]} placeholder="生日 (YYYY-MM-DD)" value={formData.birthDate} onChangeText={t => setFormData({ ...formData, birthDate: t })} />
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.label}>到職日 *</Text>
+                  {renderDateInput('start', formData.startDate || '', '到職日')}
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label}>生日 *</Text>
+                  {renderDateInput('birth', formData.birthDate || '', '生日')}
+                </View>
               </View>
 
               <Text style={styles.sectionHeader}>專業證照</Text>
               <View style={styles.row}>
-                <TextInput style={[styles.input, { flex: 1 }]} placeholder="證照名稱" value={licenseInput} onChangeText={setLicenseInput} />
+                <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} placeholder="證照名稱" value={licenseInput} onChangeText={setLicenseInput} />
                 <TouchableOpacity style={styles.miniBtn} onPress={addLicense}><Text style={styles.miniBtnText}>新增</Text></TouchableOpacity>
               </View>
               <View style={styles.tagContainer}>
@@ -268,6 +349,11 @@ export default function PersonnelScreen() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Native Date Picker Modal */}
+        {showDatePicker && Platform.OS !== 'web' && (
+          <DateTimePicker value={tempDate} mode="date" display="default" onChange={onNativeDateConfirm} />
+        )}
       </Modal>
     </View>
   );
@@ -308,6 +394,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#fff', fontWeight: 'bold' },
 
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  dateBtn: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8 },
 
   sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#C69C6D', marginTop: 15, marginBottom: 10, borderBottomWidth: 1, borderColor: '#eee', paddingBottom: 5 },
 
@@ -323,6 +410,6 @@ const styles = StyleSheet.create({
 
   submitBtn: { backgroundColor: '#C69C6D', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 10 },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  deleteBtn: { marginTop: 20, alignItems: 'center' },
-  deleteBtnText: { color: '#FF6B6B' }
+  deleteBtn: { marginTop: 20, alignItems: 'center', padding: 15 },
+  deleteBtnText: { color: '#FF6B6B', fontSize: 15, fontWeight: 'bold' }
 });
