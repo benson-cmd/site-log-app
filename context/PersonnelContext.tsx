@@ -32,6 +32,7 @@ export interface Personnel {
 interface PersonnelContextType {
     personnelList: Personnel[];
     loading: boolean;
+    error: string | null;
     addPersonnel: (person: Omit<Personnel, 'id'>) => Promise<void>;
     updatePersonnel: (id: string, updatedData: Partial<Personnel>) => Promise<void>;
     deletePersonnel: (id: string) => Promise<void>;
@@ -44,24 +45,34 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
     const [personnelList, setPersonnelList] = useState<Personnel[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const [error, setError] = useState<string | null>(null);
+
     // Fetch from Firestore
     useEffect(() => {
         const q = query(collection(db, "personnel"), orderBy("name"));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const list: Personnel[] = [];
-            snapshot.forEach((doc) => {
-                list.push({ id: doc.id, ...doc.data() } as Personnel);
-            });
-            setPersonnelList(list);
-            setLoading(false);
-        });
+        const unsubscribe = onSnapshot(q,
+            (snapshot) => {
+                const list: Personnel[] = [];
+                snapshot.forEach((doc) => {
+                    list.push({ id: doc.id, ...doc.data() } as Personnel);
+                });
+                setPersonnelList(list);
+                setLoading(false);
+                setError(null);
+            },
+            (err) => {
+                console.error("Firestore Error:", err);
+                setError(err.message);
+                setLoading(false);
+            }
+        );
         return () => unsubscribe();
     }, []);
 
     const addPersonnel = async (person: Omit<Personnel, 'id'>) => {
         try {
             await addDoc(collection(db, "personnel"), person);
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error adding personnel: ", e);
             throw e;
         }
@@ -71,7 +82,7 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
         try {
             const docRef = doc(db, "personnel", id);
             await updateDoc(docRef, updatedData);
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error updating personnel: ", e);
             throw e;
         }
@@ -80,7 +91,7 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
     const deletePersonnel = async (id: string) => {
         try {
             await deleteDoc(doc(db, "personnel", id));
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error deleting personnel: ", e);
             throw e;
         }
@@ -91,7 +102,7 @@ export const PersonnelProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return (
-        <PersonnelContext.Provider value={{ personnelList, loading, addPersonnel, updatePersonnel, deletePersonnel, getPersonnelByEmail }}>
+        <PersonnelContext.Provider value={{ personnelList, loading, error, addPersonnel, updatePersonnel, deletePersonnel, getPersonnelByEmail }}>
             {children}
         </PersonnelContext.Provider>
     );

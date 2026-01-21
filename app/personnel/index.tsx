@@ -1,15 +1,15 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView, Platform, KeyboardAvoidingView, SafeAreaView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView, Platform, KeyboardAvoidingView, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import DateTimePicker from '@react-native-community/datetimepicker'; // Need this for Native, though user asked for HTML5 input on web
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { usePersonnel, Personnel, Education, Experience } from '../../context/PersonnelContext';
 
 const DEPARTMENTS = ['總經理室', '工務部', '採購部', '行政部'];
 
 export default function PersonnelScreen() {
   const router = useRouter();
-  const { personnelList, addPersonnel, updatePersonnel, deletePersonnel } = usePersonnel();
+  const { personnelList, loading, error, addPersonnel, updatePersonnel, deletePersonnel } = usePersonnel();
 
   // Modal States
   const [isModalVisible, setModalVisible] = useState(false);
@@ -61,28 +61,40 @@ export default function PersonnelScreen() {
     setModalVisible(true);
   };
 
+  const showFeedback = (title: string, msg: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}\n${msg}`);
+    } else {
+      Alert.alert(title, msg);
+    }
+  };
+
   const handleDelete = (id: string) => {
-    Alert.alert('刪除確認', '確定要刪除此人員資料嗎？此操作無法復原。', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '刪除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deletePersonnel(id);
-            Alert.alert('操作成功', '人員已刪除');
-            setModalVisible(false);
-          } catch (e) {
-            Alert.alert('錯誤', '刪除失敗');
-          }
-        }
+    const doDelete = async () => {
+      try {
+        await deletePersonnel(id);
+        showFeedback('操作成功', '人員已刪除');
+        setModalVisible(false);
+      } catch (e) {
+        showFeedback('錯誤', '刪除失敗');
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('確定要刪除此人員資料嗎？此操作無法復原。')) {
+        doDelete();
+      }
+    } else {
+      Alert.alert('刪除確認', '確定要刪除此人員資料嗎？此操作無法復原。', [
+        { text: '取消', style: 'cancel' },
+        { text: '刪除', style: 'destructive', onPress: doDelete }
+      ]);
+    }
   };
 
   const handleSubmit = async () => {
     if (!formData.name || !formData.email || !formData.startDate || !formData.birthDate) {
-      Alert.alert('錯誤', '姓名、Email、到職日、生日為必填欄位');
+      showFeedback('錯誤', '姓名、Email (帳號)、到職日、生日為必填欄位');
       return;
     }
 
@@ -96,17 +108,18 @@ export default function PersonnelScreen() {
     try {
       if (isEditMode) {
         await updatePersonnel(currentId, finalData);
-        Alert.alert('操作成功', '資料已更新');
+        setModalVisible(false);
+        setTimeout(() => showFeedback('操作成功', '資料已更新'), 100);
       } else {
-        // New user: Alert password
-        if (finalData.initialPassword) Alert.alert('操作成功', `人員已新增，初始密碼為：${finalData.initialPassword}`);
-        else Alert.alert('操作成功', '人員已新增');
-
         await addPersonnel(finalData as Personnel);
+        setModalVisible(false);
+        const msg = finalData.initialPassword
+          ? `人員已新增，初始密碼為：${finalData.initialPassword}`
+          : '人員已新增';
+        setTimeout(() => showFeedback('操作成功', msg), 100);
       }
-      setModalVisible(false);
     } catch (e) {
-      Alert.alert('錯誤', '儲存失敗，請重試');
+      showFeedback('錯誤', '儲存失敗，請重試');
       console.error(e);
     }
   };
@@ -231,6 +244,25 @@ export default function PersonnelScreen() {
       </View>
     );
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#002147" />
+        <Text style={{ marginTop: 10, color: '#666' }}>載入中...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="alert-circle-outline" size={48} color="#FF6B6B" />
+        <Text style={{ marginTop: 10, color: '#FF6B6B', fontWeight: 'bold' }}>載入失敗</Text>
+        <Text style={{ marginTop: 5, color: '#666' }}>{error}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
