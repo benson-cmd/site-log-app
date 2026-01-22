@@ -19,7 +19,7 @@ export default function LogsScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
-    project: '', date: '', weather: '', temperature: '', content: '', reporter: '', photos: [], todayProgress: ''
+    project: '', date: '', weather: '晴', content: '', machinery: '', manpower: '', reporter: '', photos: [], todayProgress: ''
   });
 
   // Project Selection
@@ -36,9 +36,10 @@ export default function LogsScreen() {
     setNewLog({
       project: '',
       date: new Date().toISOString().split('T')[0],
-      weather: '',
-      temperature: '',
+      weather: '晴',
       content: '',
+      machinery: '',
+      manpower: '',
       reporter: user?.name || '使用者',
       photos: [],
       todayProgress: ''
@@ -60,6 +61,34 @@ export default function LogsScreen() {
     setIsEditMode(true);
     setAddModalVisible(true);
   };
+
+  // Auto-calculate Planned Progress from CSV when date or project changes
+  useEffect(() => {
+    if (newLog.date && newLog.project) {
+      const targetProject = projects.find(p => p.name === newLog.project);
+      if (targetProject?.scheduleData && targetProject.scheduleData.length > 0) {
+        // Find exact match or closest date
+        const matchingPoint = targetProject.scheduleData.find(point => point.date === newLog.date);
+        if (matchingPoint) {
+          setNewLog(prev => ({ ...prev, plannedProgress: matchingPoint.progress }));
+        } else {
+          // Find closest previous date
+          const sortedData = [...targetProject.scheduleData].sort((a, b) => a.date.localeCompare(b.date));
+          let closestProgress: number | undefined;
+          for (const point of sortedData) {
+            if (point.date <= newLog.date!) {
+              closestProgress = point.progress;
+            } else {
+              break;
+            }
+          }
+          setNewLog(prev => ({ ...prev, plannedProgress: closestProgress }));
+        }
+      } else {
+        setNewLog(prev => ({ ...prev, plannedProgress: undefined }));
+      }
+    }
+  }, [newLog.date, newLog.project, projects]);
 
   const handleSubmitLog = async () => {
     if (!newLog.project || !newLog.content || !newLog.date) {
@@ -88,10 +117,12 @@ export default function LogsScreen() {
         date: newLog.date!,
         project: newLog.project!,
         weather: newLog.weather || '晴',
-        temperature: newLog.temperature || '25°C',
         content: newLog.content!,
+        machinery: newLog.machinery,
+        manpower: newLog.manpower,
+        plannedProgress: newLog.plannedProgress,
         reporter: newLog.reporter || user?.name || '使用者',
-        status: 'pending_review', // Default new logs to pending
+        status: 'pending_review',
         photos: newLog.photos || []
       };
       addLog(entry);
@@ -157,7 +188,7 @@ export default function LogsScreen() {
             <Text style={styles.dateText}>{item.date}</Text>
           </View>
           <View style={styles.weatherContainer}>
-            <Text style={styles.weatherText}>{item.weather} {item.temperature}</Text>
+            <Text style={styles.weatherText}>{item.weather}</Text>
           </View>
         </View>
         <Text style={styles.projectTitle}>{item.project}</Text>
@@ -265,24 +296,56 @@ export default function LogsScreen() {
               />
 
               <Text style={styles.inputLabel}>日期</Text>
-              <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={newLog.date} onChangeText={t => setNewLog({ ...newLog, date: t })} />
+              {Platform.OS === 'web' ? (
+                <input
+                  type="date"
+                  value={newLog.date}
+                  onChange={(e) => setNewLog({ ...newLog, date: e.target.value })}
+                  style={{
+                    padding: 12,
+                    backgroundColor: '#F9F9F9',
+                    borderWidth: 1,
+                    borderColor: '#ddd',
+                    borderRadius: 8,
+                    fontSize: 16,
+                    marginBottom: 15
+                  }}
+                />
+              ) : (
+                <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={newLog.date} onChangeText={t => setNewLog({ ...newLog, date: t })} />
+              )}
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.inputLabel}>天氣</Text>
-                  <TextInput style={styles.input} placeholder="晴/雨" value={newLog.weather} onChangeText={t => setNewLog({ ...newLog, weather: t })} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>氣溫</Text>
-                  <TextInput style={styles.input} placeholder="25°C" value={newLog.temperature} onChangeText={t => setNewLog({ ...newLog, temperature: t })} />
-                </View>
+              <Text style={styles.inputLabel}>天氣</Text>
+              <View style={styles.weatherPicker}>
+                {['晴', '陰', '雨'].map(w => (
+                  <TouchableOpacity
+                    key={w}
+                    style={[styles.weatherOption, newLog.weather === w && styles.weatherOptionActive]}
+                    onPress={() => setNewLog({ ...newLog, date: newLog.date || new Date().toISOString().split('T')[0], weather: w })}
+                  >
+                    <Text style={[styles.weatherOptionText, newLog.weather === w && styles.weatherOptionTextActive]}>{w}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
-              <Text style={styles.inputLabel}>施工內容重點</Text>
-              <TextInput style={[styles.contentInput, { height: 100, textAlignVertical: 'top' }]} placeholder="1. ..." multiline value={newLog.content} onChangeText={t => setNewLog({ ...newLog, content: t })} />
+              <Text style={styles.inputLabel}>施工項目</Text>
+              <TextInput style={[styles.contentInput, { height: 100, textAlignVertical: 'top' }]} placeholder="今日施工項目..." multiline value={newLog.content} onChangeText={t => setNewLog({ ...newLog, content: t })} />
+
+              <Text style={styles.inputLabel}>機具</Text>
+              <TextInput style={styles.input} placeholder="例如：怪手 x1、吊車 x1" value={newLog.machinery} onChangeText={t => setNewLog({ ...newLog, machinery: t })} />
+
+              <Text style={styles.inputLabel}>人力</Text>
+              <TextInput style={styles.input} placeholder="例如：工人 8 人、技師 2 人" value={newLog.manpower} onChangeText={t => setNewLog({ ...newLog, manpower: t })} />
+
+              <Text style={styles.inputLabel}>預定進度 (%)</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: '#E3F2FD', color: '#002147' }]}
+                value={newLog.plannedProgress?.toString() || '無預定進度資料'}
+                editable={false}
+              />
 
               {/* Photo Upload */}
-              <Text style={styles.inputLabel}>現場照片</Text>
+              <Text style={styles.inputLabel}>施工照片</Text>
               <View style={styles.photoContainer}>
                 {newLog.photos?.map((uri, idx) => (
                   <View key={idx} style={styles.photoThumbContainer}>
@@ -370,4 +433,33 @@ const styles = StyleSheet.create({
   pickerContainer: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginTop: 5, overflow: 'hidden' },
   pickerItem: { padding: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   pickerText: { fontSize: 16, color: '#333' },
+
+  weatherPicker: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15
+  },
+  weatherOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#F5F7FA',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    marginHorizontal: 3,
+    alignItems: 'center'
+  },
+  weatherOptionActive: {
+    backgroundColor: '#C69C6D',
+    borderColor: '#C69C6D'
+  },
+  weatherOptionText: {
+    fontSize: 16,
+    color: '#666'
+  },
+  weatherOptionTextActive: {
+    color: '#fff',
+    fontWeight: 'bold'
+  }
 });

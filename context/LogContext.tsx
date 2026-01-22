@@ -7,11 +7,13 @@ export interface LogEntry {
   date: string;
   project: string;
   weather: string;
-  temperature: string;
-  content: string;
+  content: string;        // 施工項目 (renamed from content)
+  machinery?: string;     // 機具
+  manpower?: string;      // 人力
+  plannedProgress?: number; // 預定進度 (from CSV)
   reporter: string;
-  status: 'draft' | 'pending_review' | 'approved' | 'rejected'; // 審核狀態
-  photos?: string[]; // 照片連結 (Cloudinary URL)
+  status: 'draft' | 'pending_review' | 'approved' | 'rejected';
+  photos?: string[];      // 施工照片
 }
 
 interface LogContextType {
