@@ -122,32 +122,24 @@ export default function LogsScreen() {
 
       const submissionDate = typeof newLog.date === 'string' ? newLog.date : new Date().toISOString().split('T')[0];
 
-      // 準備提交的資料
-      const submissionTasks: Promise<any>[] = [];
-
-      // 1. Sync Progress if provided
-      if (newLog.todayProgress) {
-        const progressVal = parseFloat(newLog.todayProgress);
-        if (!isNaN(progressVal)) {
-          submissionTasks.push(updateProject(targetProject.id, { currentActualProgress: progressVal }));
-        }
-      }
-
-      // 2. Database Write (Log Entry)
+      // 1. Database Write (Log Entry) - 必須優先執行且成功
       if (isEditMode && editingId) {
         const { todayProgress, ...logData } = newLog;
-        submissionTasks.push(updateLog(editingId, {
+        const updateData = {
           ...logData,
-          projectId: targetProject.id, // 補上 projectId
+          projectId: targetProject.id,
           machines: sanitizedMachines,
           labor: sanitizedLabor,
           date: submissionDate
-        }));
+        };
+        // 深度清洗：移除所有 undefined 欄位，避免 Firestore 拒絕寫入
+        const sanitizedData = JSON.parse(JSON.stringify(updateData));
+        await updateLog(editingId, sanitizedData);
       } else {
         const entry: Omit<LogEntry, 'id'> = {
           date: submissionDate,
           project: newLog.project!,
-          projectId: targetProject.id, // 補上 projectId
+          projectId: targetProject.id,
           weather: newLog.weather || '晴',
           content: newLog.content!,
           machines: sanitizedMachines,
@@ -157,11 +149,18 @@ export default function LogsScreen() {
           status: 'pending_review',
           photos: newLog.photos || []
         };
-        submissionTasks.push(addLog(entry));
+        // 深度清洗：移除所有 undefined 欄位，確保 logs 文件確實建立
+        const sanitizedEntry = JSON.parse(JSON.stringify(entry));
+        await addLog(sanitizedEntry);
       }
 
-      // 執行原子性提交
-      await Promise.all(submissionTasks);
+      // 2. Sync Progress - 唯有日誌文件建立成功後才更新進度
+      if (newLog.todayProgress) {
+        const progressVal = parseFloat(newLog.todayProgress);
+        if (!isNaN(progressVal)) {
+          await updateProject(targetProject.id, { currentActualProgress: progressVal });
+        }
+      }
 
       // 3. Success Feedback
       Alert.alert('儲存成功', '施工日誌已提交且進度已同步。');
