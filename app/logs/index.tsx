@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useProjects } from '../../context/ProjectContext';
 import { useUser } from '../../context/UserContext';
-import { useLogs, LogEntry, MachineryItem, ManpowerItem } from '../../context/LogContext';
+import { useLogs, LogEntry, MachineItem, LaborItem } from '../../context/LogContext';
 
 export default function LogsScreen() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function LogsScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
-    project: '', date: '', weather: '晴', content: '', machinery: [], manpower: [], reporter: '', photos: [], todayProgress: ''
+    project: '', date: '', weather: '晴', content: '', machines: [], labor: [], reporter: '', photos: [], todayProgress: ''
   });
 
   // Project Selection
@@ -39,8 +39,8 @@ export default function LogsScreen() {
       date: new Date().toISOString().split('T')[0],
       weather: '晴',
       content: '',
-      machinery: [],
-      manpower: [],
+      machines: [],
+      labor: [],
       reporter: user?.name || '使用者',
       photos: [],
       todayProgress: ''
@@ -101,14 +101,14 @@ export default function LogsScreen() {
       setIsSubmitting(true);
 
       // 0. Data Sanitization (清理資料格式，確保為純物件陣列)
-      const sanitizedMachinery = (newLog.machinery || []).map(m => ({
+      const sanitizedMachines = (newLog.machines || []).map(m => ({
         id: m.id,
         name: m.name || '',
         quantity: Number(m.quantity) || 0,
         note: m.note || ''
       }));
 
-      const sanitizedManpower = (newLog.manpower || []).map(m => ({
+      const sanitizedLabor = (newLog.labor || []).map(m => ({
         id: m.id,
         type: m.type || '',
         count: Number(m.count) || 0,
@@ -139,8 +139,8 @@ export default function LogsScreen() {
         submissionTasks.push(updateLog(editingId, {
           ...logData,
           projectId: targetProject.id, // 補上 projectId
-          machinery: sanitizedMachinery,
-          manpower: sanitizedManpower,
+          machines: sanitizedMachines,
+          labor: sanitizedLabor,
           date: submissionDate
         }));
       } else {
@@ -150,8 +150,8 @@ export default function LogsScreen() {
           projectId: targetProject.id, // 補上 projectId
           weather: newLog.weather || '晴',
           content: newLog.content!,
-          machinery: sanitizedMachinery,
-          manpower: sanitizedManpower,
+          machines: sanitizedMachines,
+          labor: sanitizedLabor,
           plannedProgress: newLog.plannedProgress,
           reporter: newLog.reporter || user?.name || '使用者',
           status: 'pending_review',
@@ -245,11 +245,11 @@ export default function LogsScreen() {
         </View>
 
         {/* 機具列表顯示 */}
-        {item.machinery && item.machinery.length > 0 && (
+        {item.machines && item.machines.length > 0 && (
           <View style={styles.contentBox}>
             <Text style={styles.contentLabel}>機具：</Text>
-            {item.machinery.map((m, idx) => (
-              <View key={m.id} style={{ flexDirection: 'row', marginTop: 5, paddingVertical: 4, borderBottomWidth: idx < item.machinery!.length - 1 ? 1 : 0, borderBottomColor: '#eee' }}>
+            {item.machines.map((m, idx) => (
+              <View key={m.id} style={{ flexDirection: 'row', marginTop: 5, paddingVertical: 4, borderBottomWidth: idx < item.machines!.length - 1 ? 1 : 0, borderBottomColor: '#eee' }}>
                 <Text style={{ flex: 2, fontSize: 14, color: '#333' }}>{m.name}</Text>
                 <Text style={{ flex: 1, fontSize: 14, color: '#666', textAlign: 'center' }}>x{m.quantity}</Text>
                 <Text style={{ flex: 2, fontSize: 12, color: '#999', textAlign: 'right' }}>{m.note || '-'}</Text>
@@ -259,11 +259,11 @@ export default function LogsScreen() {
         )}
 
         {/* 人力列表顯示 */}
-        {item.manpower && item.manpower.length > 0 && (
+        {item.labor && item.labor.length > 0 && (
           <View style={styles.contentBox}>
             <Text style={styles.contentLabel}>人力：</Text>
-            {item.manpower.map((m, idx) => (
-              <View key={m.id} style={{ flexDirection: 'row', marginTop: 5, paddingVertical: 4, borderBottomWidth: idx < item.manpower!.length - 1 ? 1 : 0, borderBottomColor: '#eee' }}>
+            {item.labor.map((m, idx) => (
+              <View key={m.id} style={{ flexDirection: 'row', marginTop: 5, paddingVertical: 4, borderBottomWidth: idx < item.labor!.length - 1 ? 1 : 0, borderBottomColor: '#eee' }}>
                 <Text style={{ flex: 2, fontSize: 14, color: '#333' }}>{m.type}</Text>
                 <Text style={{ flex: 1, fontSize: 14, color: '#666', textAlign: 'center' }}>{m.count}人</Text>
                 <Text style={{ flex: 2, fontSize: 12, color: '#999', textAlign: 'right' }}>{m.work || '-'}</Text>
@@ -327,7 +327,10 @@ export default function LogsScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle} accessibilityRole="header">{isEditMode ? '編輯日誌' : '新增施工日誌'}</Text>
+              <Text style={styles.modalTitle} accessibilityRole="header">
+                {isEditMode ? '編輯日誌' : '新增施工日誌'}
+              </Text>
+              <Text style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}>日誌表單標題</Text>
               <TouchableOpacity onPress={() => setAddModalVisible(false)} accessibilityLabel="關閉彈窗">
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
@@ -421,7 +424,7 @@ export default function LogsScreen() {
 
               <Text style={styles.inputLabel}>機具</Text>
               <View style={styles.machineryListContainer}>
-                {newLog.machinery && newLog.machinery.length > 0 && newLog.machinery.map((item, index) => (
+                {newLog.machines && newLog.machines.length > 0 && newLog.machines.map((item, index) => (
                   <View key={item.id} style={styles.machineryRow}>
                     <View style={styles.machineryInputsRow}>
                       <TextInput
@@ -429,9 +432,9 @@ export default function LogsScreen() {
                         placeholder="機具名稱"
                         value={item.name}
                         onChangeText={t => {
-                          const updatedList = [...(newLog.machinery || [])];
+                          const updatedList = [...(newLog.machines || [])];
                           updatedList[index] = { ...updatedList[index], name: t };
-                          setNewLog({ ...newLog, machinery: updatedList });
+                          setNewLog({ ...newLog, machines: updatedList });
                         }}
                       />
                       <TextInput
@@ -440,9 +443,9 @@ export default function LogsScreen() {
                         keyboardType="number-pad"
                         value={item.quantity?.toString()}
                         onChangeText={t => {
-                          const updatedList = [...(newLog.machinery || [])];
+                          const updatedList = [...(newLog.machines || [])];
                           updatedList[index] = { ...updatedList[index], quantity: parseInt(t) || 0 };
-                          setNewLog({ ...newLog, machinery: updatedList });
+                          setNewLog({ ...newLog, machines: updatedList });
                         }}
                       />
                     </View>
@@ -452,16 +455,16 @@ export default function LogsScreen() {
                         placeholder="備註 (例如：進場時間)"
                         value={item.note || ''}
                         onChangeText={t => {
-                          const updatedList = [...(newLog.machinery || [])];
+                          const updatedList = [...(newLog.machines || [])];
                           updatedList[index] = { ...updatedList[index], note: t };
-                          setNewLog({ ...newLog, machinery: updatedList });
+                          setNewLog({ ...newLog, machines: updatedList });
                         }}
                       />
                       <TouchableOpacity
                         style={styles.deleteBtn}
                         onPress={() => {
-                          const updatedList = newLog.machinery?.filter((_, i) => i !== index);
-                          setNewLog({ ...newLog, machinery: updatedList });
+                          const updatedList = newLog.machines?.filter((_, i) => i !== index);
+                          setNewLog({ ...newLog, machines: updatedList });
                         }}
                       >
                         <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
@@ -472,13 +475,13 @@ export default function LogsScreen() {
                 <TouchableOpacity
                   style={styles.addMachineryBtn}
                   onPress={() => {
-                    const newItem: MachineryItem = {
+                    const newItem: MachineItem = {
                       id: Math.random().toString(36).substr(2, 9),
                       name: '',
                       quantity: 1,
                       note: ''
                     };
-                    setNewLog({ ...newLog, machinery: [...(newLog.machinery || []), newItem] });
+                    setNewLog({ ...newLog, machines: [...(newLog.machines || []), newItem] });
                   }}
                 >
                   <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />
@@ -488,7 +491,7 @@ export default function LogsScreen() {
 
               <Text style={styles.inputLabel}>人力</Text>
               <View style={styles.manpowerListContainer}>
-                {newLog.manpower && newLog.manpower.length > 0 && newLog.manpower.map((item, index) => (
+                {newLog.labor && newLog.labor.length > 0 && newLog.labor.map((item, index) => (
                   <View key={item.id} style={styles.manpowerRow}>
                     <View style={styles.manpowerInputsRow}>
                       <TextInput
@@ -496,9 +499,9 @@ export default function LogsScreen() {
                         placeholder="工種/公司"
                         value={item.type}
                         onChangeText={t => {
-                          const updatedList = [...(newLog.manpower || [])];
+                          const updatedList = [...(newLog.labor || [])];
                           updatedList[index] = { ...updatedList[index], type: t };
-                          setNewLog({ ...newLog, manpower: updatedList });
+                          setNewLog({ ...newLog, labor: updatedList });
                         }}
                       />
                       <TextInput
@@ -507,9 +510,9 @@ export default function LogsScreen() {
                         keyboardType="number-pad"
                         value={item.count?.toString()}
                         onChangeText={t => {
-                          const updatedList = [...(newLog.manpower || [])];
+                          const updatedList = [...(newLog.labor || [])];
                           updatedList[index] = { ...updatedList[index], count: parseInt(t) || 0 };
-                          setNewLog({ ...newLog, manpower: updatedList });
+                          setNewLog({ ...newLog, labor: updatedList });
                         }}
                       />
                     </View>
@@ -519,16 +522,16 @@ export default function LogsScreen() {
                         placeholder="工作內容 (選填)"
                         value={item.work || ''}
                         onChangeText={t => {
-                          const updatedList = [...(newLog.manpower || [])];
+                          const updatedList = [...(newLog.labor || [])];
                           updatedList[index] = { ...updatedList[index], work: t };
-                          setNewLog({ ...newLog, manpower: updatedList });
+                          setNewLog({ ...newLog, labor: updatedList });
                         }}
                       />
                       <TouchableOpacity
                         style={styles.deleteBtn}
                         onPress={() => {
-                          const updatedList = newLog.manpower?.filter((_, i) => i !== index);
-                          setNewLog({ ...newLog, manpower: updatedList });
+                          const updatedList = newLog.labor?.filter((_, i) => i !== index);
+                          setNewLog({ ...newLog, labor: updatedList });
                         }}
                       >
                         <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
@@ -539,13 +542,13 @@ export default function LogsScreen() {
                 <TouchableOpacity
                   style={styles.addManpowerBtn}
                   onPress={() => {
-                    const newItem: ManpowerItem = {
+                    const newItem: LaborItem = {
                       id: Math.random().toString(36).substr(2, 9),
                       type: '',
                       count: 1,
                       work: ''
                     };
-                    setNewLog({ ...newLog, manpower: [...(newLog.manpower || []), newItem] });
+                    setNewLog({ ...newLog, labor: [...(newLog.labor || []), newItem] });
                   }}
                 >
                   <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />

@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useLog } from '../../context/LogContext';
+import { useLogs } from '../../context/LogContext';
 import { useUser } from '../../context/UserContext';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -16,9 +16,11 @@ const THEME = {
 
 export default function LogDetailScreen() {
   const { id } = useLocalSearchParams();
-  const { logs, deleteLog } = useLog();
-  const { isAdmin } = useUser();
+  const { logs, deleteLog } = useLogs();
+  const { user } = useUser();
   const router = useRouter();
+
+  const isAdmin = user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw';
 
   const log = logs.find(l => l.id === id);
 
@@ -33,9 +35,9 @@ export default function LogDetailScreen() {
   if (!log) {
     return (
       <View style={styles.center}>
-        <Text style={{color: THEME.textSec, fontSize: 16}}>找不到此施工紀錄</Text>
+        <Text style={{ color: THEME.textSec, fontSize: 16 }}>找不到此施工紀錄</Text>
         <TouchableOpacity onPress={goBackToList} style={styles.errorBackBtn}>
-          <Text style={{color: '#fff', fontWeight: 'bold'}}>返回列表</Text>
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>返回列表</Text>
         </TouchableOpacity>
       </View>
     );
@@ -62,17 +64,17 @@ export default function LogDetailScreen() {
       {/* 頂部導航列 */}
       <View style={styles.navBar}>
         {/* 這裡確保觸控範圍足夠大 */}
-        <TouchableOpacity 
-          onPress={goBackToList} 
+        <TouchableOpacity
+          onPress={goBackToList}
           style={styles.navBackBtn}
           activeOpacity={0.7} // 增加點擊回饋感
         >
           <Ionicons name="chevron-back" size={28} color={THEME.text} />
           <Text style={styles.navBackText}>施工紀錄列表</Text>
         </TouchableOpacity>
-        
+
         {/* 右側佔位，讓標題在視覺上不要太偏，或者留空 */}
-        <View style={{flex: 1}} />
+        <View style={{ flex: 1 }} />
       </View>
 
       {/* 原有的內容 Header */}
@@ -89,13 +91,13 @@ export default function LogDetailScreen() {
       {/* 詳細資訊卡片 */}
       <View style={styles.section}>
         <Text style={styles.label}>🏗️ 所屬專案</Text>
-        <Text style={styles.value}>{log.projectId}</Text>
+        <Text style={styles.value}>{log.project}</Text>
       </View>
 
       <View style={styles.row}>
         <View style={[styles.section, { flex: 1, marginRight: 10 }]}>
           <Text style={styles.label}>👷 出工人數</Text>
-          <Text style={styles.value}>{log.workers} 人</Text>
+          <Text style={styles.value}>{log.labor?.reduce((acc: number, curr: any) => acc + (curr.count || 0), 0) || 0} 人</Text>
         </View>
         <View style={[styles.section, { flex: 1 }]}>
           <Text style={styles.label}>🌤️ 天氣狀況</Text>
@@ -105,7 +107,7 @@ export default function LogDetailScreen() {
 
       <View style={styles.section}>
         <Text style={styles.label}>📋 施工項目摘要</Text>
-        <Text style={styles.value}>{log.workItems}</Text>
+        <Text style={styles.value}>{log.content}</Text>
       </View>
 
       {log.notes ? (
@@ -132,8 +134,8 @@ export default function LogDetailScreen() {
           </View>
         </View>
       )}
-      
-      <View style={{height: 50}} />
+
+      <View style={{ height: 50 }} />
     </ScrollView>
   );
 }
@@ -142,7 +144,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.background, padding: 20 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorBackBtn: { marginTop: 20, backgroundColor: THEME.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  
+
   // 導航列樣式
   navBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   navBackBtn: { flexDirection: 'row', alignItems: 'center', padding: 5 }, // 增加 padding 讓點擊範圍變大

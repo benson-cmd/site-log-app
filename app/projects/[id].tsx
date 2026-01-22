@@ -53,7 +53,7 @@ export default function ProjectDetailScreen() {
   const { user } = useUser();
 
   const project = projects.find(p => p.id === id);
-  const projectLogs = logs.filter(l => l.project === project?.name).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const projectLogs = logs.filter(l => l.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Edit Modal State
   const [isEditModalVisible, setEditModalVisible] = useState(false);
