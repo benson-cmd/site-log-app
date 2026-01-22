@@ -91,7 +91,7 @@ export default function LogsScreen() {
     }
   }, [newLog.date, newLog.project, projects]);
 
-  const handleSubmitLog = async () => {
+  const onSubmit = async () => {
     if (!newLog.project || !newLog.content || !newLog.date || !newLog.weather) {
       Alert.alert('錯誤', '請填寫完整資訊 (專案、日期、天氣、內容)');
       return;
@@ -100,7 +100,7 @@ export default function LogsScreen() {
     try {
       setIsSubmitting(true);
 
-      // Sync Progress if provided
+      // 1. Sync Progress if provided
       if (newLog.todayProgress) {
         const progressVal = parseFloat(newLog.todayProgress);
         if (!isNaN(progressVal)) {
@@ -111,10 +111,11 @@ export default function LogsScreen() {
         }
       }
 
+      // 2. Database Write (Firebase & Cloudinary handled in LogContext)
       if (isEditMode && editingId) {
         const { todayProgress, ...logData } = newLog;
         await updateLog(editingId, logData);
-        Alert.alert('成功', '日誌已更新' + (newLog.todayProgress ? ' (進度已同步)' : ''));
+        Alert.alert('施工日誌更新成功！' + (newLog.todayProgress ? ' (進度已同步)' : ''));
       } else {
         const entry: Omit<LogEntry, 'id'> = {
           date: newLog.date!,
@@ -129,13 +130,15 @@ export default function LogsScreen() {
           photos: newLog.photos || []
         };
         await addLog(entry);
-        Alert.alert('成功', '施工日誌已新增，等待審核' + (newLog.todayProgress ? ' (進度已同步)' : ''));
+        Alert.alert('施工日誌提交成功！' + (newLog.todayProgress ? ' (進度已同步)' : ''));
       }
+
+      // 3. Success Feedback
       setAddModalVisible(false);
       resetForm();
-    } catch (error) {
-      console.error('Submit log error:', error);
-      Alert.alert('錯誤', '提交失敗，請檢查網路連線或稍後再試');
+    } catch (error: any) {
+      console.error('提交失敗:', error);
+      Alert.alert('提交失敗，請稍後再試。', '錯誤原因：' + (error.message || '未知錯誤'));
     } finally {
       setIsSubmitting(false);
     }
@@ -544,11 +547,14 @@ export default function LogsScreen() {
 
             <TouchableOpacity
               style={[styles.submitBtn, isSubmitting && { backgroundColor: '#ccc' }]}
-              onPress={handleSubmitLog}
+              onPress={onSubmit}
               disabled={isSubmitting}
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#fff" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
+                  <Text style={styles.submitBtnText}>傳送中...</Text>
+                </View>
               ) : (
                 <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更 & 同步' : '提交日報表 & 同步'}</Text>
               )}
