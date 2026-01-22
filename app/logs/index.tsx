@@ -100,47 +100,80 @@ export default function LogsScreen() {
     try {
       setIsSubmitting(true);
 
+      // 0. Data Sanitization (清理資料格式，確保為純物件陣列)
+      const sanitizedMachinery = (newLog.machinery || []).map(m => ({
+        id: m.id,
+        name: m.name || '',
+        quantity: Number(m.quantity) || 0,
+        note: m.note || ''
+      }));
+
+      const sanitizedManpower = (newLog.manpower || []).map(m => ({
+        id: m.id,
+        type: m.type || '',
+        count: Number(m.count) || 0,
+        work: m.work || ''
+      }));
+
+      const targetProject = projects.find(p => p.name === newLog.project);
+      if (!targetProject) {
+        throw new Error('找不到指定的專案資料');
+      }
+
+      const submissionDate = typeof newLog.date === 'string' ? newLog.date : new Date().toISOString().split('T')[0];
+
+      // 準備提交的資料
+      const submissionTasks: Promise<any>[] = [];
+
       // 1. Sync Progress if provided
       if (newLog.todayProgress) {
         const progressVal = parseFloat(newLog.todayProgress);
         if (!isNaN(progressVal)) {
-          const targetProp = projects.find(p => p.name === newLog.project);
-          if (targetProp) {
-            await updateProject(targetProp.id, { currentActualProgress: progressVal });
-          }
+          submissionTasks.push(updateProject(targetProject.id, { currentActualProgress: progressVal }));
         }
       }
 
-      // 2. Database Write (Firebase & Cloudinary handled in LogContext)
+      // 2. Database Write (Log Entry)
       if (isEditMode && editingId) {
         const { todayProgress, ...logData } = newLog;
-        await updateLog(editingId, logData);
-        Alert.alert('施工日誌更新成功！' + (newLog.todayProgress ? ' (進度已同步)' : ''));
+        submissionTasks.push(updateLog(editingId, {
+          ...logData,
+          projectId: targetProject.id, // 補上 projectId
+          machinery: sanitizedMachinery,
+          manpower: sanitizedManpower,
+          date: submissionDate
+        }));
       } else {
         const entry: Omit<LogEntry, 'id'> = {
-          date: newLog.date!,
+          date: submissionDate,
           project: newLog.project!,
+          projectId: targetProject.id, // 補上 projectId
           weather: newLog.weather || '晴',
           content: newLog.content!,
-          machinery: newLog.machinery,
-          manpower: newLog.manpower,
+          machinery: sanitizedMachinery,
+          manpower: sanitizedManpower,
           plannedProgress: newLog.plannedProgress,
           reporter: newLog.reporter || user?.name || '使用者',
           status: 'pending_review',
           photos: newLog.photos || []
         };
-        await addLog(entry);
-        Alert.alert('施工日誌提交成功！' + (newLog.todayProgress ? ' (進度已同步)' : ''));
+        submissionTasks.push(addLog(entry));
       }
 
+      // 執行原子性提交
+      await Promise.all(submissionTasks);
+
       // 3. Success Feedback
-      setAddModalVisible(false);
-      resetForm();
+      Alert.alert('儲存成功', '施工日誌已提交且進度已同步。');
+
     } catch (error: any) {
       console.error('提交失敗:', error);
-      Alert.alert('提交失敗，請稍後再試。', '錯誤原因：' + (error.message || '未知錯誤'));
+      Alert.alert('儲存失敗', '錯誤原因：' + (error.message || '未知錯誤'));
     } finally {
       setIsSubmitting(false);
+      // 4. Mandatory UI Reset (無論成功或失敗皆執行，符合使用者要求)
+      setAddModalVisible(false);
+      resetForm();
     }
   };
 
@@ -294,8 +327,8 @@ export default function LogsScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{isEditMode ? '編輯日誌' : '新增施工日誌'}</Text>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)}>
+              <Text style={styles.modalTitle} accessibilityRole="header">{isEditMode ? '編輯日誌' : '新增施工日誌'}</Text>
+              <TouchableOpacity onPress={() => setAddModalVisible(false)} accessibilityLabel="關閉彈窗">
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
             </View>

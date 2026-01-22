@@ -20,6 +20,7 @@ export interface LogEntry {
   id: string;
   date: string;
   project: string;
+  projectId?: string;      // 新增 projectId 以便關聯
   weather: string;
   content: string;        // 施工項目 (renamed from content)
   machinery?: MachineryItem[];     // 機具列表
