@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Image, StatusBar, ScrollView, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Image, StatusBar, ScrollView, TextInput, Platform, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -17,6 +17,7 @@ export default function LogsScreen() {
   const [isAddModalVisible, setAddModalVisible] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
     project: '', date: '', weather: '晴', content: '', machinery: [], manpower: [], reporter: '', photos: [], todayProgress: ''
@@ -91,44 +92,53 @@ export default function LogsScreen() {
   }, [newLog.date, newLog.project, projects]);
 
   const handleSubmitLog = async () => {
-    if (!newLog.project || !newLog.content || !newLog.date) {
-      Alert.alert('錯誤', '請填寫完整資訊 (專案、日期、內容)');
+    if (!newLog.project || !newLog.content || !newLog.date || !newLog.weather) {
+      Alert.alert('錯誤', '請填寫完整資訊 (專案、日期、天氣、內容)');
       return;
     }
 
-    // Sync Progress if provided
-    if (newLog.todayProgress) {
-      const progressVal = parseFloat(newLog.todayProgress);
-      if (!isNaN(progressVal)) {
-        // Find project
-        const targetProp = projects.find(p => p.name === newLog.project);
-        if (targetProp) {
-          await updateProject(targetProp.id, { currentActualProgress: progressVal });
+    try {
+      setIsSubmitting(true);
+
+      // Sync Progress if provided
+      if (newLog.todayProgress) {
+        const progressVal = parseFloat(newLog.todayProgress);
+        if (!isNaN(progressVal)) {
+          const targetProp = projects.find(p => p.name === newLog.project);
+          if (targetProp) {
+            await updateProject(targetProp.id, { currentActualProgress: progressVal });
+          }
         }
       }
-    }
 
-    if (isEditMode && editingId) {
-      const { todayProgress, ...logData } = newLog;
-      updateLog(editingId, logData);
-      Alert.alert('成功', '日誌已更新' + (newLog.todayProgress ? ' (進度已同步)' : ''));
-    } else {
-      const entry: Omit<LogEntry, 'id'> = {
-        date: newLog.date!,
-        project: newLog.project!,
-        weather: newLog.weather || '晴',
-        content: newLog.content!,
-        machinery: newLog.machinery,
-        manpower: newLog.manpower,
-        plannedProgress: newLog.plannedProgress,
-        reporter: newLog.reporter || user?.name || '使用者',
-        status: 'pending_review',
-        photos: newLog.photos || []
-      };
-      addLog(entry);
-      Alert.alert('成功', '施工日誌已新增，等待審核' + (newLog.todayProgress ? ' (進度已同步)' : ''));
+      if (isEditMode && editingId) {
+        const { todayProgress, ...logData } = newLog;
+        await updateLog(editingId, logData);
+        Alert.alert('成功', '日誌已更新' + (newLog.todayProgress ? ' (進度已同步)' : ''));
+      } else {
+        const entry: Omit<LogEntry, 'id'> = {
+          date: newLog.date!,
+          project: newLog.project!,
+          weather: newLog.weather || '晴',
+          content: newLog.content!,
+          machinery: newLog.machinery,
+          manpower: newLog.manpower,
+          plannedProgress: newLog.plannedProgress,
+          reporter: newLog.reporter || user?.name || '使用者',
+          status: 'pending_review',
+          photos: newLog.photos || []
+        };
+        await addLog(entry);
+        Alert.alert('成功', '施工日誌已新增，等待審核' + (newLog.todayProgress ? ' (進度已同步)' : ''));
+      }
+      setAddModalVisible(false);
+      resetForm();
+    } catch (error) {
+      console.error('Submit log error:', error);
+      Alert.alert('錯誤', '提交失敗，請檢查網路連線或稍後再試');
+    } finally {
+      setIsSubmitting(false);
     }
-    setAddModalVisible(false);
   };
 
   // Approval Handlers
@@ -316,14 +326,26 @@ export default function LogsScreen() {
                 </View>
               )}
 
-              <Text style={styles.inputLabel}>今日實際累計進度 (%)</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                placeholder="例如：35.5 (將同步至專案)"
-                value={newLog.todayProgress?.toString()}
-                onChangeText={t => setNewLog({ ...newLog, todayProgress: t })}
-              />
+              <View style={styles.progressRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>今日實際累計進度 (%)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    placeholder="例如：35.5"
+                    value={newLog.todayProgress?.toString()}
+                    onChangeText={t => setNewLog({ ...newLog, todayProgress: t })}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>預定進度 (%)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: '#E3F2FD', color: '#002147' }]}
+                    value={newLog.plannedProgress?.toString() || '無資料'}
+                    editable={false}
+                  />
+                </View>
+              </View>
 
               <Text style={styles.inputLabel}>日期</Text>
               {Platform.OS === 'web' ? (
@@ -495,12 +517,7 @@ export default function LogsScreen() {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.inputLabel}>預定進度 (%)</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: '#E3F2FD', color: '#002147' }]}
-                value={newLog.plannedProgress?.toString() || '無預定進度資料'}
-                editable={false}
-              />
+
 
               {/* Photo Upload */}
               <Text style={styles.inputLabel}>施工照片</Text>
@@ -525,8 +542,16 @@ export default function LogsScreen() {
               <View style={{ height: 30 }} />
             </ScrollView>
 
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitLog}>
-              <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更 & 同步' : '提交日報表 & 同步'}</Text>
+            <TouchableOpacity
+              style={[styles.submitBtn, isSubmitting && { backgroundColor: '#ccc' }]}
+              onPress={handleSubmitLog}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更 & 同步' : '提交日報表 & 同步'}</Text>
+              )}
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -583,7 +608,8 @@ const styles = StyleSheet.create({
   modalBody: { flex: 1 },
   inputLabel: { fontSize: 14, color: '#666', marginTop: 15, marginBottom: 5, fontWeight: 'bold' },
   input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#F9F9F9' },
-  submitBtn: { backgroundColor: '#C69C6D', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 20, marginBottom: 20 },
+  progressRow: { flexDirection: 'row', gap: 16, marginBottom: 5 },
+  submitBtn: { backgroundColor: '#C69C6D', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 20, marginBottom: 20, minHeight: 55, justifyContent: 'center' },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 
   // Picker
