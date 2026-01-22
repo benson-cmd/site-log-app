@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useProjects } from '../../context/ProjectContext';
 import { useUser } from '../../context/UserContext';
-import { useLogs, LogEntry } from '../../context/LogContext';
+import { useLogs, LogEntry, MachineryItem, ManpowerItem } from '../../context/LogContext';
 
 export default function LogsScreen() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function LogsScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
-    project: '', date: '', weather: '晴', content: '', machinery: '', manpower: '', reporter: '', photos: [], todayProgress: ''
+    project: '', date: '', weather: '晴', content: '', machinery: [], manpower: [], reporter: '', photos: [], todayProgress: ''
   });
 
   // Project Selection
@@ -38,8 +38,8 @@ export default function LogsScreen() {
       date: new Date().toISOString().split('T')[0],
       weather: '晴',
       content: '',
-      machinery: '',
-      manpower: '',
+      machinery: [],
+      manpower: [],
       reporter: user?.name || '使用者',
       photos: [],
       todayProgress: ''
@@ -198,6 +198,34 @@ export default function LogsScreen() {
           <Text style={styles.contentText}>{item.content}</Text>
         </View>
 
+        {/* 機具列表顯示 */}
+        {item.machinery && item.machinery.length > 0 && (
+          <View style={styles.contentBox}>
+            <Text style={styles.contentLabel}>機具：</Text>
+            {item.machinery.map((m, idx) => (
+              <View key={m.id} style={{ flexDirection: 'row', marginTop: 5, paddingVertical: 4, borderBottomWidth: idx < item.machinery!.length - 1 ? 1 : 0, borderBottomColor: '#eee' }}>
+                <Text style={{ flex: 2, fontSize: 14, color: '#333' }}>{m.name}</Text>
+                <Text style={{ flex: 1, fontSize: 14, color: '#666', textAlign: 'center' }}>x{m.quantity}</Text>
+                <Text style={{ flex: 2, fontSize: 12, color: '#999', textAlign: 'right' }}>{m.note || '-'}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* 人力列表顯示 */}
+        {item.manpower && item.manpower.length > 0 && (
+          <View style={styles.contentBox}>
+            <Text style={styles.contentLabel}>人力：</Text>
+            {item.manpower.map((m, idx) => (
+              <View key={m.id} style={{ flexDirection: 'row', marginTop: 5, paddingVertical: 4, borderBottomWidth: idx < item.manpower!.length - 1 ? 1 : 0, borderBottomColor: '#eee' }}>
+                <Text style={{ flex: 2, fontSize: 14, color: '#333' }}>{m.type}</Text>
+                <Text style={{ flex: 1, fontSize: 14, color: '#666', textAlign: 'center' }}>{m.count}人</Text>
+                <Text style={{ flex: 2, fontSize: 12, color: '#999', textAlign: 'right' }}>{m.work || '-'}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Photos Preview in Card */}
         {item.photos && item.photos.length > 0 && (
           <ScrollView horizontal style={styles.photoScroll} showsHorizontalScrollIndicator={false}>
@@ -332,10 +360,138 @@ export default function LogsScreen() {
               <TextInput style={[styles.contentInput, { height: 100, textAlignVertical: 'top' }]} placeholder="今日施工項目..." multiline value={newLog.content} onChangeText={t => setNewLog({ ...newLog, content: t })} />
 
               <Text style={styles.inputLabel}>機具</Text>
-              <TextInput style={styles.input} placeholder="例如：怪手 x1、吊車 x1" value={newLog.machinery} onChangeText={t => setNewLog({ ...newLog, machinery: t })} />
+              <View style={styles.machineryListContainer}>
+                {newLog.machinery && newLog.machinery.length > 0 && newLog.machinery.map((item, index) => (
+                  <View key={item.id} style={styles.machineryRow}>
+                    <View style={styles.machineryInputsRow}>
+                      <TextInput
+                        style={[styles.machineryInput, { flex: 2 }]}
+                        placeholder="機具名稱"
+                        value={item.name}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.machinery || [])];
+                          updatedList[index] = { ...updatedList[index], name: t };
+                          setNewLog({ ...newLog, machinery: updatedList });
+                        }}
+                      />
+                      <TextInput
+                        style={[styles.machineryInput, { flex: 1, marginLeft: 5 }]}
+                        placeholder="數量"
+                        keyboardType="number-pad"
+                        value={item.quantity?.toString()}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.machinery || [])];
+                          updatedList[index] = { ...updatedList[index], quantity: parseInt(t) || 0 };
+                          setNewLog({ ...newLog, machinery: updatedList });
+                        }}
+                      />
+                    </View>
+                    <View style={styles.machineryInputsRow}>
+                      <TextInput
+                        style={[styles.machineryInput, { flex: 1 }]}
+                        placeholder="備註 (例如：進場時間)"
+                        value={item.note || ''}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.machinery || [])];
+                          updatedList[index] = { ...updatedList[index], note: t };
+                          setNewLog({ ...newLog, machinery: updatedList });
+                        }}
+                      />
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() => {
+                          const updatedList = newLog.machinery?.filter((_, i) => i !== index);
+                          setNewLog({ ...newLog, machinery: updatedList });
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={styles.addMachineryBtn}
+                  onPress={() => {
+                    const newItem: MachineryItem = {
+                      id: Math.random().toString(36).substr(2, 9),
+                      name: '',
+                      quantity: 1,
+                      note: ''
+                    };
+                    setNewLog({ ...newLog, machinery: [...(newLog.machinery || []), newItem] });
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />
+                  <Text style={styles.addMachineryText}>新增機具</Text>
+                </TouchableOpacity>
+              </View>
 
               <Text style={styles.inputLabel}>人力</Text>
-              <TextInput style={styles.input} placeholder="例如：工人 8 人、技師 2 人" value={newLog.manpower} onChangeText={t => setNewLog({ ...newLog, manpower: t })} />
+              <View style={styles.manpowerListContainer}>
+                {newLog.manpower && newLog.manpower.length > 0 && newLog.manpower.map((item, index) => (
+                  <View key={item.id} style={styles.manpowerRow}>
+                    <View style={styles.manpowerInputsRow}>
+                      <TextInput
+                        style={[styles.manpowerInput, { flex: 2 }]}
+                        placeholder="工種/公司"
+                        value={item.type}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.manpower || [])];
+                          updatedList[index] = { ...updatedList[index], type: t };
+                          setNewLog({ ...newLog, manpower: updatedList });
+                        }}
+                      />
+                      <TextInput
+                        style={[styles.manpowerInput, { flex: 1, marginLeft: 5 }]}
+                        placeholder="人數"
+                        keyboardType="number-pad"
+                        value={item.count?.toString()}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.manpower || [])];
+                          updatedList[index] = { ...updatedList[index], count: parseInt(t) || 0 };
+                          setNewLog({ ...newLog, manpower: updatedList });
+                        }}
+                      />
+                    </View>
+                    <View style={styles.manpowerInputsRow}>
+                      <TextInput
+                        style={[styles.manpowerInput, { flex: 1 }]}
+                        placeholder="工作內容 (選填)"
+                        value={item.work || ''}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.manpower || [])];
+                          updatedList[index] = { ...updatedList[index], work: t };
+                          setNewLog({ ...newLog, manpower: updatedList });
+                        }}
+                      />
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() => {
+                          const updatedList = newLog.manpower?.filter((_, i) => i !== index);
+                          setNewLog({ ...newLog, manpower: updatedList });
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={styles.addManpowerBtn}
+                  onPress={() => {
+                    const newItem: ManpowerItem = {
+                      id: Math.random().toString(36).substr(2, 9),
+                      type: '',
+                      count: 1,
+                      work: ''
+                    };
+                    setNewLog({ ...newLog, manpower: [...(newLog.manpower || []), newItem] });
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />
+                  <Text style={styles.addManpowerText}>新增人力</Text>
+                </TouchableOpacity>
+              </View>
 
               <Text style={styles.inputLabel}>預定進度 (%)</Text>
               <TextInput
@@ -461,5 +617,105 @@ const styles = StyleSheet.create({
   weatherOptionTextActive: {
     color: '#fff',
     fontWeight: 'bold'
+  },
+
+  // 機具列表樣式
+  machineryListContainer: {
+    marginBottom: 15,
+    backgroundColor: '#F5F7FA',
+    borderRadius: 8,
+    padding: 10
+  },
+  machineryRow: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0'
+  },
+  machineryInputsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5
+  },
+  machineryInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 14,
+    backgroundColor: '#fff'
+  },
+  deleteBtn: {
+    marginLeft: 8,
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  addMachineryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#C69C6D',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 5
+  },
+  addMachineryText: {
+    color: '#C69C6D',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginLeft: 5
+  },
+
+  // 人力列表樣式
+  manpowerListContainer: {
+    marginBottom: 15,
+    backgroundColor: '#F5F7FA',
+    borderRadius: 8,
+    padding: 10
+  },
+  manpowerRow: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0'
+  },
+  manpowerInputsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5
+  },
+  manpowerInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 14,
+    backgroundColor: '#fff'
+  },
+  addManpowerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#C69C6D',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 5
+  },
+  addManpowerText: {
+    color: '#C69C6D',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginLeft: 5
   }
 });

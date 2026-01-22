@@ -2,14 +2,28 @@ import React, { createContext, useState, useEffect, useContext, ReactNode } from
 import { db } from '../src/lib/firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
+export interface MachineryItem {
+  id: string;
+  name: string;           // 機具名稱
+  quantity: number;       // 數量
+  note?: string;          // 備註 (例如：進場時間)
+}
+
+export interface ManpowerItem {
+  id: string;
+  type: string;           // 工種/公司
+  count: number;          // 人數
+  work?: string;          // 工作內容
+}
+
 export interface LogEntry {
   id: string;
   date: string;
   project: string;
   weather: string;
   content: string;        // 施工項目 (renamed from content)
-  machinery?: string;     // 機具
-  manpower?: string;      // 人力
+  machinery?: MachineryItem[];     // 機具列表
+  manpower?: ManpowerItem[];      // 人力列表
   plannedProgress?: number; // 預定進度 (from CSV)
   reporter: string;
   status: 'draft' | 'pending_review' | 'approved' | 'rejected';
