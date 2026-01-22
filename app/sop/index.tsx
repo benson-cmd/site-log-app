@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, createElement } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
 import { WebView } from 'react-native-webview';
+import { useUser } from '../../context/UserContext';
 
 // SOP Data Interface
 interface SOPItem {
@@ -17,6 +18,9 @@ interface SOPItem {
 const CATEGORIES = ['基礎工程', '結構工程', '裝修工程', '安全衛生'] as const;
 
 export default function SOPScreen() {
+  const { user } = useUser();
+  const isSuperAdmin = user?.email === 'wu@dwcc.com.tw';
+
   const [sops, setSops] = useState<SOPItem[]>([
     {
       id: '1',
@@ -61,6 +65,10 @@ export default function SOPScreen() {
   };
 
   const handleAddSOP = () => {
+    if (!isSuperAdmin) {
+      Alert.alert('權限不足', '僅限超級管理員可新增 SOP 文件');
+      return;
+    }
     if (!newSOP.title || !newSOP.category) {
       Alert.alert('錯誤', '請填寫標題並選擇分類');
       return;
@@ -117,9 +125,11 @@ export default function SOPScreen() {
         contentContainerStyle={{ padding: 15 }}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setAddModalVisible(true)}>
-        <Ionicons name="add" size={30} color="#fff" />
-      </TouchableOpacity>
+      {isSuperAdmin && (
+        <TouchableOpacity style={styles.fab} onPress={() => setAddModalVisible(true)}>
+          <Ionicons name="add" size={30} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       {/* View PDF Modal (Native Only) */}
       <Modal visible={viewModalVisible && Platform.OS !== 'web'} animationType="fade" transparent onRequestClose={() => setViewModalVisible(false)}>

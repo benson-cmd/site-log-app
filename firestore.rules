@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 輔助函數：判斷是否為管理員
+    function isAdmin() {
+      return request.auth != null && 
+             (get(/databases/$(database)/documents/personnel/$(request.auth.token.email)).data.role == 'admin' ||
+              request.auth.token.email == 'wu@dwcc.com.tw');
+    }
+    
+    // 輔助函數：判斷是否為超級管理員 (SOP 專用)
+    function isSuperAdmin() {
+      return request.auth != null && request.auth.token.email == 'wu@dwcc.com.tw';
+    }
+    
+    // 專案管理：管理員可寫，登入使用者可讀
+    match /projects/{projectId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    
+    // 施工日誌：所有人可新增，僅建立者可修改其日誌
+    match /logs/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+                             resource.data.reporter == request.auth.token.name;
+    }
+    
+    // 人員管理：僅管理員可讀寫
+    match /personnel/{personId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // SOP 資料庫：所有人可讀，僅超級管理員可寫
+    match /sop/{sopId} {
+      allow read: if request.auth != null;
+      allow write: if isSuperAdmin();
+    }
+    
+    // 公告欄：所有人可讀，管理員可寫
+    match /announcements/{announcementId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+  }
+}

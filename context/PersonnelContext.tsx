@@ -33,6 +33,7 @@ export interface Personnel {
     experience?: Experience[]; // 經歷
     initialPassword?: string; // 初始密碼 (ROC Birthday)
     password?: string; // 自訂密碼
+    role?: 'admin' | 'user'; // 權限等級 (admin, user)
 }
 
 interface PersonnelContextType {

@@ -8,6 +8,7 @@ import Papa from 'papaparse';
 import { useProjects, Project, Extension, ChangeDesign, SubsequentExpansion, SchedulePoint } from '../../context/ProjectContext';
 import { usePersonnel } from '../../context/PersonnelContext';
 import { useLogs } from '../../context/LogContext';
+import { useUser } from '../../context/UserContext';
 
 const THEME = {
   primary: '#C69C6D',
@@ -49,6 +50,7 @@ export default function ProjectDetailScreen() {
   const { projects, updateProject, deleteProject } = useProjects();
   const { personnelList } = usePersonnel();
   const { logs } = useLogs();
+  const { user } = useUser();
 
   const project = projects.find(p => p.id === id);
   const projectLogs = logs.filter(l => l.project === project?.name).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -275,8 +277,12 @@ export default function ProjectDetailScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={24} color="#fff" /></TouchableOpacity>
           <Text style={styles.headerTitle}>{project.name}</Text>
           <View style={{ flexDirection: 'row' }}>
-            <TouchableOpacity onPress={handleDelete} style={{ marginRight: 15 }}><Ionicons name="trash-outline" size={24} color="#FF6B6B" /></TouchableOpacity>
-            <TouchableOpacity onPress={() => setEditModalVisible(true)}><Ionicons name="create-outline" size={24} color="#fff" /></TouchableOpacity>
+            {user?.role === 'admin' && (
+              <>
+                <TouchableOpacity onPress={handleDelete} style={{ marginRight: 15 }}><Ionicons name="trash-outline" size={24} color="#FF6B6B" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setEditModalVisible(true)}><Ionicons name="create-outline" size={24} color="#fff" /></TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </SafeAreaView>
@@ -509,9 +515,11 @@ export default function ProjectDetailScreen() {
               </View>
 
               <View style={{ height: 50 }} />
-              <TouchableOpacity onPress={handleDelete} style={styles.deleteBtnFull}>
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>刪除此專案</Text>
-              </TouchableOpacity>
+              {user?.role === 'admin' && (
+                <TouchableOpacity onPress={handleDelete} style={styles.deleteBtnFull}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>刪除此專案</Text>
+                </TouchableOpacity>
+              )}
               <View style={{ height: 30 }} />
 
             </ScrollView>

@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { useUser } from '../../context/UserContext';
 import { usePersonnel, Personnel } from '../../context/PersonnelContext';
+import { auth } from '../../src/lib/firebase';
+import { updateEmail } from 'firebase/auth';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -196,6 +198,21 @@ export default function ProfileScreen() {
     };
 
     try {
+      // Email Synchronization with Firebase Auth
+      if (editForm.email !== profile?.email && auth.currentUser) {
+        try {
+          await updateEmail(auth.currentUser, editForm.email);
+          Alert.alert('Email 已更新', '登入帳號已變更，下次請以新 Email 登入');
+        } catch (authError: any) {
+          console.error('Auth update error:', authError);
+          if (authError.code === 'auth/requires-recent-login') {
+            Alert.alert('驗證過期', '變更 Email 需要最近曾重新登入，請登出後再試');
+            return;
+          }
+          Alert.alert('認證更新失敗', 'Email 帳號更新失敗，但基本資料仍會嘗試儲存');
+        }
+      }
+
       await updatePersonnel(editForm.id, finalUpdate);
       setProfile(finalUpdate); // Optimistic update
       setEditModalVisible(false);
@@ -334,14 +351,21 @@ export default function ProfileScreen() {
             {editForm && (
               <ScrollView style={styles.modalBody}>
                 {/* Basic Info (Read Only or Limited) */}
-                <View style={styles.sectionHeader}><Text style={styles.sectionTitleSmall}>基本資料 (僅檢視)</Text></View>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>姓名</Text>
+                  <Text style={styles.inputLabel}>姓名 (唯讀)</Text>
                   <TextInput style={[styles.input, styles.readonly]} value={editForm.name} editable={false} />
                 </View>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>職稱</Text>
+                  <Text style={styles.inputLabel}>職稱 (唯讀)</Text>
                   <TextInput style={[styles.input, styles.readonly]} value={editForm.title} editable={false} />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>部門單位 (唯讀)</Text>
+                  <TextInput style={[styles.input, styles.readonly]} value={editForm.department} editable={false} />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>到職日 (唯讀)</Text>
+                  <TextInput style={[styles.input, styles.readonly]} value={editForm.startDate} editable={false} />
                 </View>
                 {/* Editable Phone/Email */}
                 <View style={styles.inputGroup}>

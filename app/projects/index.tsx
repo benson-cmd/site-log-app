@@ -426,9 +426,11 @@ export default function ProjectsScreen() {
                     <View style={[styles.statusTag, { backgroundColor: '#E3F2FD' }]}>
                       <Text style={{ color: '#002147', fontSize: 12, fontWeight: 'bold' }}>{EXECUTION_STATUS_MAP[item.executionStatus || 'not_started']}</Text>
                     </View>
-                    <TouchableOpacity onPress={() => handleDeleteParams(item.id, item.name)} style={{ padding: 5 }}>
-                      <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                    </TouchableOpacity>
+                    {user?.role === 'admin' && (
+                      <TouchableOpacity onPress={() => handleDeleteParams(item.id, item.name)} style={{ padding: 5 }}>
+                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <Text style={styles.projectTitle}>{item.name}</Text>
                   <Text style={styles.projectInfo}>📍 {item.address}</Text>
@@ -452,7 +454,7 @@ export default function ProjectsScreen() {
           ListEmptyComponent={<View style={styles.emptyState}><Ionicons name="folder-open-outline" size={64} color="#ccc" /><Text style={styles.emptyText}>沒有符合的專案</Text></View>}
         />
 
-        {user && (
+        {user?.role === 'admin' && (
           <TouchableOpacity style={styles.fab} onPress={() => setAddModalVisible(true)}>
             <Ionicons name="add" size={30} color="#fff" />
           </TouchableOpacity>
@@ -727,7 +729,9 @@ export default function ProjectsScreen() {
                 <MenuItem icon="home" label="首頁" onPress={() => { setMenuVisible(false); router.push('/dashboard'); }} />
                 <MenuItem icon="folder-open" label="專案列表" isActive={true} onPress={() => setMenuVisible(false)} />
                 <MenuItem icon="clipboard" label="施工紀錄" onPress={() => { setMenuVisible(false); router.push('/logs'); }} />
-                <MenuItem icon="people" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
+                {user?.role === 'admin' && (
+                  <MenuItem icon="people" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
+                )}
                 <MenuItem icon="library" label="SOP資料庫" onPress={() => { setMenuVisible(false); router.push('/sop'); }} />
                 <MenuItem icon="person-circle" label="我的檔案" onPress={() => { setMenuVisible(false); router.push('/profile'); }} />
               </View>

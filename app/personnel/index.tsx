@@ -4,12 +4,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { usePersonnel, Personnel, Education, Experience } from '../../context/PersonnelContext';
+import { useUser } from '../../context/UserContext';
+import { useEffect } from 'react';
 
 const DEPARTMENTS = ['總經理室', '工務部', '採購部', '行政部'];
 
 export default function PersonnelScreen() {
   const router = useRouter();
   const { personnelList, loading, error, addPersonnel, updatePersonnel, deletePersonnel } = usePersonnel();
+  const { user } = useUser();
+
+  // Route Protection: Only Admin can access
+  useEffect(() => {
+    if (!loading && user?.role !== 'admin' && user?.email !== 'wu@dwcc.com.tw') {
+      router.replace('/dashboard');
+    }
+  }, [user, loading]);
 
   // Modal States
   const [isModalVisible, setModalVisible] = useState(false);
@@ -22,7 +32,7 @@ export default function PersonnelScreen() {
   // However, best practice is to ensure TypeScript knows about them.
   // We will modify the state type definition.
   const [formData, setFormData] = useState<Partial<Personnel> & { password?: string; confirmPassword?: string; }>({
-    name: '', title: '', email: '', phone: '', startDate: '', birthDate: '', department: '工務部', licenses: [], education: [], experience: []
+    name: '', title: '', email: '', phone: '', startDate: '', birthDate: '', department: '工務部', role: 'user', licenses: [], education: [], experience: []
   });
 
   // Sub-form inputs
@@ -52,7 +62,7 @@ export default function PersonnelScreen() {
   const handleOpenAdd = () => {
     setIsEditMode(false);
     setFormData({
-      name: '', title: '', email: '', phone: '', startDate: '', birthDate: '', department: '工務部',
+      name: '', title: '', email: '', phone: '', startDate: '', birthDate: '', department: '工務部', role: 'user',
       licenses: [], education: [], experience: []
     });
     setModalVisible(true);
@@ -343,6 +353,19 @@ export default function PersonnelScreen() {
                 ))}
               </View>
 
+              <Text style={styles.label}>系統權限 *</Text>
+              <View style={styles.deptContainer}>
+                {[{ id: 'admin', label: '管理員' }, { id: 'user', label: '一般使用者' }].map(r => (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[styles.chip, formData.role === r.id && styles.chipActive]}
+                    onPress={() => setFormData({ ...formData, role: r.id as 'admin' | 'user' })}
+                  >
+                    <Text style={[styles.chipText, formData.role === r.id && styles.chipTextActive]}>{r.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <Text style={styles.label}>帳號與 Email (綁定) *</Text>
               <TextInput style={styles.input} placeholder="Email" value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} keyboardType="email-address" autoCapitalize="none" />
 
@@ -473,14 +496,16 @@ export default function PersonnelScreen() {
               <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更' : '新增人員'}</Text>
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardAvoidingView >
 
         {/* Native Date Picker Modal */}
-        {showDatePicker && Platform.OS !== 'web' && (
-          <DateTimePicker value={tempDate} mode="date" display="default" onChange={onNativeDateConfirm} />
-        )}
-      </Modal>
-    </View>
+        {
+          showDatePicker && Platform.OS !== 'web' && (
+            <DateTimePicker value={tempDate} mode="date" display="default" onChange={onNativeDateConfirm} />
+          )
+        }
+      </Modal >
+    </View >
   );
 }
 

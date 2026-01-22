@@ -237,9 +237,11 @@ export default function LogsScreen() {
 
         <View style={styles.cardFooter}>
           <Text style={styles.reporterText}>填寫人：{item.reporter}</Text>
-          <TouchableOpacity onPress={() => handleOpenEdit(item)}>
-            <Ionicons name="create-outline" size={24} color="#C69C6D" />
-          </TouchableOpacity>
+          {item.reporter === user?.name && (
+            <TouchableOpacity onPress={() => handleOpenEdit(item)}>
+              <Ionicons name="create-outline" size={24} color="#C69C6D" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Admin Actions */}

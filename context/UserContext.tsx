@@ -5,7 +5,8 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 // 定義 User 型別
 export interface User {
   email: string;
-  role?: string; // 職稱
+  role?: 'admin' | 'user'; // 權限等級 (admin, user)
+  title?: string;          // 職稱
   name?: string;
   department?: string;
 }
@@ -32,7 +33,8 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         setUser({
           email: 'wu@dwcc.com.tw',
           name: '吳資彬', // Backup Name
-          role: '系統管理員(備援)',
+          role: 'admin',
+          title: '總經理',
           department: '總經理室'
         });
         return true;
@@ -63,7 +65,8 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         setUser({
           email: userData.email,
           name: userData.name,
-          role: userData.title || '員工',
+          role: userData.role || 'user',
+          title: userData.title || '員工',
           department: userData.department
         });
         return true;

@@ -20,6 +20,7 @@ export default function DashboardScreen() {
   const { logout, user } = useUser();
   const { projects } = useProjects();
   const { logs } = useLogs();
+  const isAdmin = user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw';
 
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -62,6 +63,10 @@ export default function DashboardScreen() {
   };
 
   const handleSubmitAnnouncement = () => {
+    if (!isAdmin) {
+      Alert.alert('權限不足', '僅管理員可發布公告');
+      return;
+    }
     if (!announceForm.title || !announceForm.content) {
       Alert.alert('錯誤', '標題與內容不可為空');
       return;
@@ -93,6 +98,10 @@ export default function DashboardScreen() {
 
   // Delete Announcement
   const handleDeleteAnnouncement = () => {
+    if (!isAdmin) {
+      Alert.alert('權限不足', '僅管理員可刪除公告');
+      return;
+    }
     if (!editingAnnouncement) return;
     Alert.alert('確認刪除', '確定要刪除此公告嗎？', [
       { text: '取消', style: 'cancel' },
@@ -138,13 +147,15 @@ export default function DashboardScreen() {
         {/* Announcement Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>公告欄</Text>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={handleOpenAdd}
-          >
-            <Ionicons name="add" size={18} color="#002147" />
-            <Text style={styles.addBtnText}>新增公告</Text>
-          </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={handleOpenAdd}
+            >
+              <Ionicons name="add" size={18} color="#002147" />
+              <Text style={styles.addBtnText}>新增公告</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {announcements.length === 0 ? (
@@ -153,11 +164,13 @@ export default function DashboardScreen() {
           <View key={ann.id} style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>{ann.title}</Text>
-              <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => handleOpenEdit(ann)}>
-                  <Ionicons name="pencil" size={20} color="#C69C6D" />
-                </TouchableOpacity>
-              </View>
+              {isAdmin && (
+                <View style={styles.cardActions}>
+                  <TouchableOpacity onPress={() => handleOpenEdit(ann)}>
+                    <Ionicons name="pencil" size={20} color="#C69C6D" />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
             <Text style={styles.cardContent}>{ann.content}</Text>
             <Text style={styles.cardFooter}>{ann.date} | {ann.author}</Text>
@@ -191,16 +204,19 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.menuList}>
-                {menuItems.map((item, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.menuItem}
-                    onPress={() => navTo(item.path)}
-                  >
-                    <Ionicons name={item.icon as any} size={24} color="#C69C6D" />
-                    <Text style={[styles.menuText, { color: '#fff' }]}>{item.title}</Text>
-                  </TouchableOpacity>
-                ))}
+                {menuItems.map((item, index) => {
+                  if (item.path === '/personnel' && !isAdmin) return null;
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.menuItem}
+                      onPress={() => navTo(item.path)}
+                    >
+                      <Ionicons name={item.icon as any} size={24} color="#C69C6D" />
+                      <Text style={[styles.menuText, { color: '#fff' }]}>{item.title}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <View style={styles.menuFooter}>
