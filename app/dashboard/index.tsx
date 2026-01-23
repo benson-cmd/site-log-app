@@ -33,9 +33,9 @@ export default function DashboardScreen() {
   const [announceForm, setAnnounceForm] = useState({ title: '', content: '' });
 
   // 1. 統計邏輯
-  // 進行中專案：Status = 'construction'
-  const activeProjectsCount = projects.filter(p => p.status === 'construction').length;
-  // 待審核紀錄：Status = 'pending_review' (假設 LogContext 有此狀態)
+  // 進行中專案：executionStatus = 'construction'
+  const activeProjectsCount = projects.filter(p => p.executionStatus === 'construction').length;
+  // 待審核紀錄：Status = 'pending_review'
   const pendingLogsCount = logs.filter(l => l.status === 'pending_review').length;
 
   const navTo = (path: string) => {
