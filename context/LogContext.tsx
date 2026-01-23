@@ -90,18 +90,9 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
 
   const addLog = async (log: Omit<LogEntry, 'id'>) => {
     try {
-      let finalPhotos: string[] = [];
-      if (log.photos && log.photos.length > 0) {
-        finalPhotos = await Promise.all(log.photos.map(async (p) => {
-          if (p.startsWith('http')) return p; // Already a remote URL
-          return await uploadPhoto(p);
-        }));
-      }
-
       await addDoc(collection(db, "logs"), {
         ...log,
-        photos: finalPhotos,
-        createdAt: new Date().toISOString() // 增加建立時間以便追蹤
+        createdAt: new Date().toISOString()
       });
     } catch (e) {
       console.error("Error adding log: ", e);
@@ -111,16 +102,8 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
 
   const updateLog = async (id: string, data: Partial<LogEntry>) => {
     try {
-      let finalPhotos = data.photos;
-      if (data.photos && data.photos.length > 0) {
-        finalPhotos = await Promise.all(data.photos.map(async (p) => {
-          if (p.startsWith('http')) return p;
-          return await uploadPhoto(p);
-        }));
-      }
-
       const docRef = doc(db, "logs", id);
-      await updateDoc(docRef, { ...data, photos: finalPhotos || data.photos });
+      await updateDoc(docRef, data);
     } catch (e) {
       console.error("Error updating log: ", e);
       throw e;
