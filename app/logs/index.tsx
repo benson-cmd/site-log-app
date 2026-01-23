@@ -212,6 +212,9 @@ export default function LogsScreen() {
 
       console.log('[DEBUG] 所有提交步驟完成');
       Alert.alert('儲存成功', '施工日誌已提交且進度已同步。');
+
+      // 手術級修正：強制強迫重置並關閉
+      setNewLog(prev => ({ ...prev, photos: [] }));
       setAddModalVisible(false);
       resetForm();
 
@@ -251,7 +254,10 @@ export default function LogsScreen() {
     try {
       await updateLog(id, { status: 'approved' });
       Alert.alert('成功', '已核准');
-      if (Platform.OS === 'web') alert('已核准');
+      if (Platform.OS === 'web') {
+        alert('審核已完成');
+        window.location.reload(); // 額外強迫刷新確保看到狀態變更
+      }
     } catch (error) {
       console.error('[DEBUG] 核准異常:', error);
       Alert.alert('錯誤', '核准失敗');
@@ -278,7 +284,10 @@ export default function LogsScreen() {
     try {
       await updateLog(id, { status: 'rejected' });
       Alert.alert('成功', '已退回');
-      if (Platform.OS === 'web') alert('已退回');
+      if (Platform.OS === 'web') {
+        alert('審核已完成');
+        window.location.reload();
+      }
     } catch (error) {
       console.error('[DEBUG] 退回異常:', error);
       Alert.alert('錯誤', '退回失敗');

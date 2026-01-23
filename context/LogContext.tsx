@@ -58,26 +58,30 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
-  const uploadPhoto = async (uri: string): Promise<string> => {
+  const uploadPhoto = async (uri: any): Promise<string> => {
     try {
-      console.log(`[Cloudinary] 準備上傳原始 URI: ${uri}`);
+      // 手術級修正：強制提取真實 URI，防止 [object Object] 報錯
+      const rawUri = uri.uri || uri;
+      console.log(`[Cloudinary] 準備上傳原始 URI: ${rawUri}`);
+
       const formData = new FormData();
 
       if (React.Component && typeof window !== 'undefined' && (window as any).navigator) {
         // Web 環境處理
-        const response = await fetch(uri);
+        const response = await fetch(rawUri);
         const blob = await response.blob();
         formData.append('file', blob);
       } else {
         // React Native 環境處理
         // @ts-ignore
         formData.append('file', {
-          uri: uri,
+          uri: rawUri,
           type: 'image/jpeg',
           name: 'upload.jpg'
         });
       }
 
+      // 確保 ml_default 是純字串
       formData.append('upload_preset', 'ml_default');
 
       const response = await fetch('https://api.cloudinary.com/v1_1/df8uaeazt/image/upload', {
@@ -95,7 +99,7 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Cloudinary 錯誤: ${errorDetail}`);
       }
     } catch (e: any) {
-      console.error(`[Cloudinary] 處理 ${uri} 時發生例外:`, e);
+      console.error(`[Cloudinary] 處理例外:`, e);
       throw e;
     }
   };
