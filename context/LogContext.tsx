@@ -72,9 +72,6 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
       const response = await fetch('https://api.cloudinary.com/v1_1/df8uaeazt/image/upload', {
         method: 'POST',
         body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
       });
 
       const data = await response.json();
@@ -82,7 +79,8 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
         return data.secure_url;
       } else {
         console.error("Cloudinary Error:", data);
-        throw new Error("Upload failed");
+        const errorMsg = data.error?.message || "照片上傳失敗";
+        throw new Error(errorMsg);
       }
     } catch (e) {
       console.error("Upload failed:", e);
@@ -100,7 +98,11 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
         }));
       }
 
-      await addDoc(collection(db, "logs"), { ...log, photos: finalPhotos });
+      await addDoc(collection(db, "logs"), {
+        ...log,
+        photos: finalPhotos,
+        createdAt: new Date().toISOString() // 增加建立時間以便追蹤
+      });
     } catch (e) {
       console.error("Error adding log: ", e);
       throw e;

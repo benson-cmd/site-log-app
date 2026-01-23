@@ -122,36 +122,45 @@ export default function LogsScreen() {
 
       const submissionDate = typeof newLog.date === 'string' ? newLog.date : new Date().toISOString().split('T')[0];
 
+      // 0. Photo Upload Handling (如果 context 已經處理，這裡確保 metadata 與 loading)
+      // 使用者特別要求在 onSubmit 中確保 await 處理。
+      // 在我們的架構中，addLog/updateLog 內部會呼叫 uploadPhoto 並 await。
+      // 所以這裡只需確保整體的非同步流程正確，並捕捉上傳階段的錯誤。
+
       // 1. Database Write (Log Entry) - 必須優先執行且成功
-      if (isEditMode && editingId) {
-        const { todayProgress, ...logData } = newLog;
-        const updateData = {
-          ...logData,
-          projectId: targetProject.id,
-          machines: sanitizedMachines,
-          labor: sanitizedLabor,
-          date: submissionDate
-        };
-        // 深度清洗：移除所有 undefined 欄位，避免 Firestore 拒絕寫入
-        const sanitizedData = JSON.parse(JSON.stringify(updateData));
-        await updateLog(editingId, sanitizedData);
-      } else {
-        const entry: Omit<LogEntry, 'id'> = {
-          date: submissionDate,
-          project: newLog.project!,
-          projectId: targetProject.id,
-          weather: newLog.weather || '晴',
-          content: newLog.content!,
-          machines: sanitizedMachines,
-          labor: sanitizedLabor,
-          plannedProgress: newLog.plannedProgress,
-          reporter: newLog.reporter || user?.name || '使用者',
-          status: 'pending_review',
-          photos: newLog.photos || []
-        };
-        // 深度清洗：移除所有 undefined 欄位，確保 logs 文件確實建立
-        const sanitizedEntry = JSON.parse(JSON.stringify(entry));
-        await addLog(sanitizedEntry);
+      try {
+        if (isEditMode && editingId) {
+          const { todayProgress, ...logData } = newLog;
+          const updateData = {
+            ...logData,
+            projectId: targetProject.id,
+            machines: sanitizedMachines,
+            labor: sanitizedLabor,
+            date: submissionDate,
+            photos: newLog.photos || [] // 確保為空陣列
+          };
+          const sanitizedData = JSON.parse(JSON.stringify(updateData));
+          await updateLog(editingId, sanitizedData);
+        } else {
+          const entry: Omit<LogEntry, 'id'> = {
+            date: submissionDate,
+            project: newLog.project!,
+            projectId: targetProject.id,
+            weather: newLog.weather || '晴',
+            content: newLog.content!,
+            machines: sanitizedMachines,
+            labor: sanitizedLabor,
+            plannedProgress: newLog.plannedProgress,
+            reporter: newLog.reporter || user?.name || '使用者',
+            status: 'pending_review',
+            photos: newLog.photos || [] // 確保為空陣列
+          };
+          const sanitizedEntry = JSON.parse(JSON.stringify(entry));
+          await addLog(sanitizedEntry);
+        }
+      } catch (uploadError: any) {
+        // 針對照片或寫入失敗噴發特定 Alert
+        throw new Error(`上傳失敗：${uploadError.message || '請檢查網路連線或稍後再試。'}`);
       }
 
       // 2. Sync Progress - 唯有日誌文件建立成功後才更新進度
@@ -164,15 +173,15 @@ export default function LogsScreen() {
 
       // 3. Success Feedback
       Alert.alert('儲存成功', '施工日誌已提交且進度已同步。');
+      // 成功後才執行 UI 重置
+      setAddModalVisible(false);
+      resetForm();
 
     } catch (error: any) {
       console.error('提交失敗:', error);
-      Alert.alert('儲存失敗', '錯誤原因：' + (error.message || '未知錯誤'));
+      Alert.alert('儲存失敗', error.message || '未知錯誤');
     } finally {
       setIsSubmitting(false);
-      // 4. Mandatory UI Reset (無論成功或失敗皆執行，符合使用者要求)
-      setAddModalVisible(false);
-      resetForm();
     }
   };
 
