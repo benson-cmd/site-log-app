@@ -62,7 +62,6 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
     try {
       // 手術級修正：強制提取真實 URI，防止 [object Object] 報錯
       const rawUri = uri.uri || uri;
-      console.log(`[Cloudinary] 準備上傳原始 URI: ${rawUri}`);
 
       const formData = new FormData();
 
@@ -91,7 +90,6 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
 
       const data = await response.json();
       if (data.secure_url) {
-        console.log(`[Cloudinary] 上傳成功 -> ${data.secure_url}`);
         return data.secure_url;
       } else {
         const errorDetail = data.error?.message || JSON.stringify(data);

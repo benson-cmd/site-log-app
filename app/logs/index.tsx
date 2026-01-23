@@ -97,10 +97,6 @@ export default function LogsScreen() {
     }
 
     try {
-      console.log('--- [DEBUG] 開始提交施工日誌 ---');
-      console.log('[DEBUG] 當前模式:', isEditMode ? '編輯' : '新增');
-      console.log('[DEBUG] Cloudinary 參數(硬編碼): df8uaeazt / ml_default');
-
       setIsSubmitting(true);
 
       // 1. Photo Upload Stage - 平行處理與偵錯
@@ -112,20 +108,18 @@ export default function LogsScreen() {
 
       const uploadPromises = currentPhotos.map(async (photoUri, index) => {
         // 如果是遠端網址則跳過
-        if (typeof photoUri === 'string' && photoUri.startsWith('http')) {
-          console.log(`[DEBUG] 照片 [${index + 1}] 已經是伺服器網址:`, photoUri);
+        const uriString = typeof photoUri === 'string' ? photoUri : (photoUri as any).uri;
+        if (uriString && uriString.startsWith('http')) {
           setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
-          return photoUri;
+          return uriString;
         }
 
-        console.log(`[DEBUG] 正在啟動照片上傳 [${index + 1}/${totalPhotos}]:`, photoUri);
         try {
-          const remoteUrl = await uploadPhoto(photoUri);
+          // 手術級修正：確保傳入的是 .uri 或原始值
+          const remoteUrl = await uploadPhoto((photoUri as any)?.uri || photoUri);
           setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
-          console.log(`[DEBUG] 照片 [${index + 1}] 上傳完畢 ->`, remoteUrl);
           return remoteUrl;
         } catch (err: any) {
-          console.error(`[DEBUG] 照片 [${index + 1}] 上傳失敗:`, err.message);
           throw new Error(`照片 [${index + 1}] 上傳失敗: ${err.message || 'Cloudinary 錯誤'}`);
         }
       });
@@ -133,18 +127,14 @@ export default function LogsScreen() {
       let uploadedUrls: string[] = [];
       try {
         const results = await Promise.all(uploadPromises);
-        // 強制過濾非字串網址，確保最後存入的是純網址陣列
         uploadedUrls = results.filter(url => typeof url === 'string' && url.startsWith('http'));
-        console.log('[DEBUG] 所有照片上傳階段結束，有效網址列表:', uploadedUrls);
       } catch (uploadError: any) {
-        console.error('[DEBUG] 照片處理流程異常中斷:', uploadError);
         Alert.alert('照片上傳失敗', `照片傳送發生錯誤，請檢查 Cloudinary 設定。\n\n細節: ${uploadError.message}`);
         setIsSubmitting(false);
         return;
       }
 
       // 2. Data Sanitization (資料清洗)
-      console.log('[DEBUG] 正在執行深度資料清洗...');
       const sanitizedMachines = (newLog.machines || []).map(m => ({
         id: m.id,
         name: m.name || '',
@@ -167,9 +157,7 @@ export default function LogsScreen() {
 
       const submissionDate = typeof newLog.date === 'string' ? newLog.date : new Date().toISOString().split('T')[0];
 
-      // 3. Database Write (使用 JSON 清理 undefined)
       if (isEditMode && editingId) {
-        console.log('[DEBUG] 執行編輯存檔, ID:', editingId);
         const { todayProgress, ...logData } = newLog;
         const updateData = {
           ...logData,
@@ -182,7 +170,6 @@ export default function LogsScreen() {
         const cleanUpdateData = JSON.parse(JSON.stringify(updateData));
         await updateLog(editingId, cleanUpdateData);
       } else {
-        console.log('[DEBUG] 執行新增存檔');
         const entry: Omit<LogEntry, 'id'> = {
           date: submissionDate,
           project: newLog.project!,
@@ -205,12 +192,10 @@ export default function LogsScreen() {
       if (newLog.todayProgress) {
         const progressVal = parseFloat(newLog.todayProgress);
         if (!isNaN(progressVal)) {
-          console.log(`[DEBUG] 自動同步進度至 ${targetProject.name}: ${progressVal}%`);
           await updateProject(targetProject.id, { currentActualProgress: progressVal });
         }
       }
 
-      console.log('[DEBUG] 所有提交步驟完成');
       Alert.alert('儲存成功', '施工日誌已提交且進度已同步。');
 
       // 手術級修正：強制強迫重置並關閉
@@ -253,13 +238,11 @@ export default function LogsScreen() {
   const processApprove = async (id: string) => {
     try {
       await updateLog(id, { status: 'approved' });
-      Alert.alert('成功', '已核准');
+      alert('操作成功');
       if (Platform.OS === 'web') {
-        alert('審核已完成');
-        window.location.reload(); // 額外強迫刷新確保看到狀態變更
+        window.location.reload();
       }
     } catch (error) {
-      console.error('[DEBUG] 核准異常:', error);
       Alert.alert('錯誤', '核准失敗');
     }
   };
@@ -283,13 +266,11 @@ export default function LogsScreen() {
   const processReturn = async (id: string) => {
     try {
       await updateLog(id, { status: 'rejected' });
-      Alert.alert('成功', '已退回');
+      alert('操作成功');
       if (Platform.OS === 'web') {
-        alert('審核已完成');
         window.location.reload();
       }
     } catch (error) {
-      console.error('[DEBUG] 退回異常:', error);
       Alert.alert('錯誤', '退回失敗');
     }
   };
