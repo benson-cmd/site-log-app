@@ -60,7 +60,9 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
 
   const uploadPhoto = async (uri: string): Promise<string> => {
     try {
+      console.log(`[Cloudinary] 準備上傳原始 URI: ${uri}`);
       const formData = new FormData();
+      // 嚴謹構建 FormData，僅包含必要欄位
       // @ts-ignore
       formData.append('file', {
         uri: uri,
@@ -76,14 +78,15 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
 
       const data = await response.json();
       if (data.secure_url) {
+        console.log(`[Cloudinary] 上傳成功 -> ${data.secure_url}`);
         return data.secure_url;
       } else {
         const errorDetail = data.error?.message || JSON.stringify(data);
-        console.error("Cloudinary Error Detail:", errorDetail);
-        throw new Error(`Cloudinary Error: ${errorDetail}`);
+        console.error("[Cloudinary] 上傳失敗細節:", errorDetail);
+        throw new Error(`Cloudinary 錯誤: ${errorDetail}`);
       }
     } catch (e: any) {
-      console.error("Upload process failed:", e);
+      console.error(`[Cloudinary] 處理 ${uri} 時發生例外:`, e);
       throw e;
     }
   };

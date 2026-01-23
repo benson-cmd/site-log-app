@@ -224,17 +224,38 @@ export default function LogsScreen() {
   };
 
   // Approval Handlers
-  const handleApprove = (id: string) => {
+  const handleApprove = async (id: string) => {
     Alert.alert('核准確認', '確定核准此施工日誌？', [
       { text: '取消', style: 'cancel' },
-      { text: '確認核准', onPress: () => updateLog(id, { status: 'approved' }) }
+      {
+        text: '確認核准',
+        onPress: async () => {
+          try {
+            await updateLog(id, { status: 'approved' });
+            Alert.alert('成功', '已核准');
+          } catch (error) {
+            Alert.alert('錯誤', '核准失敗，請稍後再試');
+          }
+        }
+      }
     ]);
   };
 
-  const handleReject = (id: string) => {
+  const handleReturn = async (id: string) => {
     Alert.alert('退回確認', '確定退回此日誌？', [
       { text: '取消', style: 'cancel' },
-      { text: '確認退回', style: 'destructive', onPress: () => updateLog(id, { status: 'rejected' }) }
+      {
+        text: '確認退回',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await updateLog(id, { status: 'rejected' });
+            Alert.alert('成功', '已退回');
+          } catch (error) {
+            Alert.alert('錯誤', '退回失敗，請稍後再試');
+          }
+        }
+      }
     ]);
   };
 
@@ -321,8 +342,8 @@ export default function LogsScreen() {
         {/* Photos Preview in Card */}
         {item.photos && item.photos.length > 0 && (
           <ScrollView horizontal style={styles.photoScroll} showsHorizontalScrollIndicator={false}>
-            {item.photos.map((uri, idx) => (
-              <Image key={idx} source={{ uri }} style={styles.cardPhoto} />
+            {item.photos.map((url, idx) => (
+              <Image key={idx} source={{ uri: url }} style={styles.cardPhoto} />
             ))}
           </ScrollView>
         )}
@@ -339,7 +360,7 @@ export default function LogsScreen() {
         {/* Admin Actions */}
         {isAdmin && isPending && (
           <View style={styles.adminActions}>
-            <TouchableOpacity style={[styles.actionBtn, styles.rejectBtn]} onPress={() => handleReject(item.id)}>
+            <TouchableOpacity style={[styles.actionBtn, styles.rejectBtn]} onPress={() => handleReturn(item.id)}>
               <Text style={styles.actionText}>退回</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionBtn, styles.approveBtn]} onPress={() => handleApprove(item.id)}>
