@@ -11,7 +11,7 @@ export default function LogsScreen() {
   const router = useRouter();
   const { projects, updateProject } = useProjects();
   const { user } = useUser();
-  const { logs, addLog, updateLog } = useLogs();
+  const { logs, addLog, updateLog, uploadPhoto } = useLogs();
 
   // Modal States
   const [isAddModalVisible, setAddModalVisible] = useState(false);
@@ -22,6 +22,7 @@ export default function LogsScreen() {
   const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
     project: '', date: '', weather: '晴', content: '', machines: [], labor: [], reporter: '', photos: [], todayProgress: ''
   });
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
 
   // Project Selection
   const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -55,9 +56,7 @@ export default function LogsScreen() {
   };
 
   const handleOpenEdit = (item: LogEntry) => {
-    setNewLog({ ...item, todayProgress: '' }); // Edit mode usually doesn't need to re-set progress unless specified, or we could fetch current project progress? unique handling needed.
-    // For now, allow editing fields but maybe not progress sync on edit unless explicitly changed?
-    // Let's keep it simple: progress is an 'input' to update project state at that moment.
+    setNewLog({ ...item, todayProgress: '' });
     setEditingId(item.id);
     setIsEditMode(true);
     setAddModalVisible(true);
@@ -98,29 +97,54 @@ export default function LogsScreen() {
     }
 
     try {
+      console.log('--- [DEBUG] 開始提交施工日誌 ---');
+      console.log('[DEBUG] 當前模式:', isEditMode ? '編輯' : '新增');
+      console.log('[DEBUG] Cloudinary 參數(硬編碼): df8uaeazt / ml_default');
+
       setIsSubmitting(true);
 
-      // 1. Photo Upload Stage - 嚴謹處理照片上傳
+      // 1. Photo Upload Stage - 平行處理與偵錯
       const currentPhotos = newLog.photos || [];
-      const uploadedUrls: string[] = [];
+      const totalPhotos = currentPhotos.length;
+      setUploadProgress({ current: 0, total: totalPhotos });
 
-      try {
-        for (const photoUri of currentPhotos) {
-          if (photoUri.startsWith('http')) {
-            uploadedUrls.push(photoUri); // 已經是遠端網址
-          } else {
-            // 呼叫 Context 中的 uploadPhoto
-            const remoteUrl = await useLogs().uploadPhoto(photoUri);
-            uploadedUrls.push(remoteUrl);
-          }
+      console.log(`[DEBUG] 待處理照片共 ${totalPhotos} 張`);
+
+      const uploadPromises = currentPhotos.map(async (photoUri, index) => {
+        // 如果是遠端網址則跳過
+        if (typeof photoUri === 'string' && photoUri.startsWith('http')) {
+          console.log(`[DEBUG] 照片 [${index + 1}] 已經是伺服器網址:`, photoUri);
+          setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
+          return photoUri;
         }
+
+        console.log(`[DEBUG] 正在啟動照片上傳 [${index + 1}/${totalPhotos}]:`, photoUri);
+        try {
+          const remoteUrl = await uploadPhoto(photoUri);
+          setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
+          console.log(`[DEBUG] 照片 [${index + 1}] 上傳完畢 ->`, remoteUrl);
+          return remoteUrl;
+        } catch (err: any) {
+          console.error(`[DEBUG] 照片 [${index + 1}] 上傳失敗:`, err.message);
+          throw new Error(`照片 [${index + 1}] 上傳失敗: ${err.message || 'Cloudinary 錯誤'}`);
+        }
+      });
+
+      let uploadedUrls: string[] = [];
+      try {
+        const results = await Promise.all(uploadPromises);
+        // 強制過濾非字串網址，確保最後存入的是純網址陣列
+        uploadedUrls = results.filter(url => typeof url === 'string' && url.startsWith('http'));
+        console.log('[DEBUG] 所有照片上傳階段結束，有效網址列表:', uploadedUrls);
       } catch (uploadError: any) {
-        Alert.alert('照片上傳失敗', '請檢查網路連線或稍後再試。');
+        console.error('[DEBUG] 照片處理流程異常中斷:', uploadError);
+        Alert.alert('照片上傳失敗', `照片傳送發生錯誤，請檢查 Cloudinary 設定。\n\n細節: ${uploadError.message}`);
         setIsSubmitting(false);
-        return; // 中斷提交流程
+        return;
       }
 
-      // 2. Data Sanitization (清理資料格式，確保為純物件陣列)
+      // 2. Data Sanitization (資料清洗)
+      console.log('[DEBUG] 正在執行深度資料清洗...');
       const sanitizedMachines = (newLog.machines || []).map(m => ({
         id: m.id,
         name: m.name || '',
@@ -137,13 +161,15 @@ export default function LogsScreen() {
 
       const targetProject = projects.find(p => p.name === newLog.project);
       if (!targetProject) {
+        console.error('[DEBUG] 找不到與日誌對應的專案:', newLog.project);
         throw new Error('找不到指定的專案資料');
       }
 
       const submissionDate = typeof newLog.date === 'string' ? newLog.date : new Date().toISOString().split('T')[0];
 
-      // 3. Database Write (Log Entry) - 必須優先執行且成功
+      // 3. Database Write (使用 JSON 清理 undefined)
       if (isEditMode && editingId) {
+        console.log('[DEBUG] 執行編輯存檔, ID:', editingId);
         const { todayProgress, ...logData } = newLog;
         const updateData = {
           ...logData,
@@ -153,9 +179,10 @@ export default function LogsScreen() {
           date: submissionDate,
           photos: uploadedUrls
         };
-        const sanitizedData = JSON.parse(JSON.stringify(updateData));
-        await updateLog(editingId, sanitizedData);
+        const cleanUpdateData = JSON.parse(JSON.stringify(updateData));
+        await updateLog(editingId, cleanUpdateData);
       } else {
+        console.log('[DEBUG] 執行新增存檔');
         const entry: Omit<LogEntry, 'id'> = {
           date: submissionDate,
           project: newLog.project!,
@@ -169,26 +196,28 @@ export default function LogsScreen() {
           status: 'pending_review',
           photos: uploadedUrls
         };
-        const sanitizedEntry = JSON.parse(JSON.stringify(entry));
-        await addLog(sanitizedEntry);
+        const cleanEntry = JSON.parse(JSON.stringify(entry));
+        await addLog(cleanEntry);
       }
+      console.log('[DEBUG] Firestore 寫入成功');
 
-      // 4. Sync Progress - 唯有日誌文件建立成功後才更新進度
+      // 4. Sync Project Progress
       if (newLog.todayProgress) {
         const progressVal = parseFloat(newLog.todayProgress);
         if (!isNaN(progressVal)) {
+          console.log(`[DEBUG] 自動同步進度至 ${targetProject.name}: ${progressVal}%`);
           await updateProject(targetProject.id, { currentActualProgress: progressVal });
         }
       }
 
-      // 5. Success Feedback & Reset
+      console.log('[DEBUG] 所有提交步驟完成');
       Alert.alert('儲存成功', '施工日誌已提交且進度已同步。');
       setAddModalVisible(false);
       resetForm();
 
     } catch (error: any) {
-      console.error('提交失敗:', error);
-      Alert.alert('儲存失敗', error.message || '未知錯誤');
+      console.error('[DEBUG] 提交過程崩潰:', error);
+      Alert.alert('儲存失敗', error.message || '系統發生未知錯誤');
     } finally {
       setIsSubmitting(false);
     }
@@ -344,10 +373,10 @@ export default function LogsScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle} accessibilityRole="header">
+              <Text style={styles.modalTitle} accessibilityRole="header" accessibilityLabel={isEditMode ? '編輯施工日誌表單' : '新增施工日誌表單'}>
                 {isEditMode ? '編輯日誌' : '新增施工日誌'}
               </Text>
-              <Text style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}>日誌表單標題</Text>
+              <Text style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}>施工日誌詳情輸入區域</Text>
               <TouchableOpacity
                 onPress={() => !isSubmitting && setAddModalVisible(false)}
                 accessibilityLabel="關閉彈窗"
@@ -410,20 +439,14 @@ export default function LogsScreen() {
 
               <Text style={styles.inputLabel}>日期</Text>
               {Platform.OS === 'web' ? (
-                <input
-                  type="date"
-                  value={newLog.date}
-                  onChange={(e) => setNewLog({ ...newLog, date: e.target.value })}
-                  style={{
-                    padding: 12,
-                    backgroundColor: '#F9F9F9',
-                    borderWidth: 1,
-                    borderColor: '#ddd',
-                    borderRadius: 8,
-                    fontSize: 16,
-                    marginBottom: 15
-                  }}
-                />
+                <View>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="YYYY-MM-DD"
+                    value={newLog.date}
+                    onChangeText={t => setNewLog({ ...newLog, date: t })}
+                  />
+                </View>
               ) : (
                 <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={newLog.date} onChangeText={t => setNewLog({ ...newLog, date: t })} />
               )}
@@ -578,8 +601,6 @@ export default function LogsScreen() {
                 </TouchableOpacity>
               </View>
 
-
-
               {/* Photo Upload */}
               <Text style={styles.inputLabel}>施工照片</Text>
               <View style={styles.photoContainer}>
@@ -611,7 +632,11 @@ export default function LogsScreen() {
               {isSubmitting ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                   <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
-                  <Text style={styles.submitBtnText}>傳送中...</Text>
+                  <Text style={styles.submitBtnText}>
+                    {uploadProgress.total > 0 && uploadProgress.current < uploadProgress.total
+                      ? `照片傳送中 (${uploadProgress.current}/${uploadProgress.total})...`
+                      : '傳送中，請稍候...'}
+                  </Text>
                 </View>
               ) : (
                 <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更 & 同步' : '提交日報表 & 同步'}</Text>

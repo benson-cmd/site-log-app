@@ -78,12 +78,12 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
       if (data.secure_url) {
         return data.secure_url;
       } else {
-        console.error("Cloudinary Error:", data);
-        const errorMsg = data.error?.message || "照片上傳失敗";
-        throw new Error(errorMsg);
+        const errorDetail = data.error?.message || JSON.stringify(data);
+        console.error("Cloudinary Error Detail:", errorDetail);
+        throw new Error(`Cloudinary Error: ${errorDetail}`);
       }
-    } catch (e) {
-      console.error("Upload failed:", e);
+    } catch (e: any) {
+      console.error("Upload process failed:", e);
       throw e;
     }
   };
