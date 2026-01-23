@@ -215,6 +215,13 @@ export default function LogsScreen() {
       setAddModalVisible(false);
       resetForm();
 
+      // 確保畫面即時重整 (Web 需求)
+      if (Platform.OS === 'web') {
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      }
+
     } catch (error: any) {
       console.error('[DEBUG] 提交過程崩潰:', error);
       Alert.alert('儲存失敗', error.message || '系統發生未知錯誤');
@@ -225,38 +232,57 @@ export default function LogsScreen() {
 
   // Approval Handlers
   const handleApprove = async (id: string) => {
+    console.log('[DEBUG] 觸發核准, ID:', id);
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('確定核准此施工日誌？');
+      if (confirmed) {
+        await processApprove(id);
+      }
+      return;
+    }
+
     Alert.alert('核准確認', '確定核准此施工日誌？', [
       { text: '取消', style: 'cancel' },
-      {
-        text: '確認核准',
-        onPress: async () => {
-          try {
-            await updateLog(id, { status: 'approved' });
-            Alert.alert('成功', '已核准');
-          } catch (error) {
-            Alert.alert('錯誤', '核准失敗，請稍後再試');
-          }
-        }
-      }
+      { text: '確認核准', onPress: () => processApprove(id) }
     ]);
   };
 
+  const processApprove = async (id: string) => {
+    try {
+      await updateLog(id, { status: 'approved' });
+      Alert.alert('成功', '已核准');
+      if (Platform.OS === 'web') alert('已核准');
+    } catch (error) {
+      console.error('[DEBUG] 核准異常:', error);
+      Alert.alert('錯誤', '核准失敗');
+    }
+  };
+
   const handleReturn = async (id: string) => {
+    console.log('[DEBUG] 觸發退回, ID:', id);
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('確定退回此日誌？');
+      if (confirmed) {
+        await processReturn(id);
+      }
+      return;
+    }
+
     Alert.alert('退回確認', '確定退回此日誌？', [
       { text: '取消', style: 'cancel' },
-      {
-        text: '確認退回',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await updateLog(id, { status: 'rejected' });
-            Alert.alert('成功', '已退回');
-          } catch (error) {
-            Alert.alert('錯誤', '退回失敗，請稍後再試');
-          }
-        }
-      }
+      { text: '確認退回', style: 'destructive', onPress: () => processReturn(id) }
     ]);
+  };
+
+  const processReturn = async (id: string) => {
+    try {
+      await updateLog(id, { status: 'rejected' });
+      Alert.alert('成功', '已退回');
+      if (Platform.OS === 'web') alert('已退回');
+    } catch (error) {
+      console.error('[DEBUG] 退回異常:', error);
+      Alert.alert('錯誤', '退回失敗');
+    }
   };
 
   // Photo Picker

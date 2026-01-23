@@ -62,13 +62,22 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
     try {
       console.log(`[Cloudinary] 準備上傳原始 URI: ${uri}`);
       const formData = new FormData();
-      // 嚴謹構建 FormData，僅包含必要欄位
-      // @ts-ignore
-      formData.append('file', {
-        uri: uri,
-        type: 'image/jpeg',
-        name: 'upload.jpg'
-      });
+
+      if (React.Component && typeof window !== 'undefined' && (window as any).navigator) {
+        // Web 環境處理
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        formData.append('file', blob);
+      } else {
+        // React Native 環境處理
+        // @ts-ignore
+        formData.append('file', {
+          uri: uri,
+          type: 'image/jpeg',
+          name: 'upload.jpg'
+        });
+      }
+
       formData.append('upload_preset', 'ml_default');
 
       const response = await fetch('https://api.cloudinary.com/v1_1/df8uaeazt/image/upload', {
