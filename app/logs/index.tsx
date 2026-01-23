@@ -115,8 +115,10 @@ export default function LogsScreen() {
         }
 
         try {
-          // 手術級修正：確保傳入的是 .uri 或原始值
-          const remoteUrl = await uploadPhoto((photoUri as any)?.uri || photoUri);
+          // 修改呼叫點：確保傳給 uploadPhoto 的是純網址字串
+          // 使用 (photoUri as any) 解決 'never' 或類型不匹配問題
+          const actualUri = (photoUri as any)?.uri || photoUri;
+          const remoteUrl = await uploadPhoto(actualUri);
           setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
           return remoteUrl;
         } catch (err: any) {
@@ -218,61 +220,47 @@ export default function LogsScreen() {
     }
   };
 
+  // 狀態更新處理器
+  const handleStatusUpdate = async (id: string, newStatus: string) => {
+    try {
+      alert(`準備將狀態更新為: ${newStatus}`);
+      await updateLog(id, { status: newStatus as any });
+      alert('狀態更新成功！');
+      if (Platform.OS === 'web') {
+        window.location.reload();
+      }
+    } catch (e: any) {
+      alert('更新失敗: ' + e.message);
+    }
+  };
+
   // Approval Handlers
-  const handleApprove = async (id: string) => {
-    console.log('[DEBUG] 觸發核准, ID:', id);
+  const handleApprove = (id: string) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm('確定核准此施工日誌？');
-      if (confirmed) {
-        await processApprove(id);
+      if (window.confirm('確定核准此施工日誌？')) {
+        handleStatusUpdate(id, 'approved');
       }
       return;
     }
 
     Alert.alert('核准確認', '確定核准此施工日誌？', [
       { text: '取消', style: 'cancel' },
-      { text: '確認核准', onPress: () => processApprove(id) }
+      { text: '確認核准', onPress: () => handleStatusUpdate(id, 'approved') }
     ]);
   };
 
-  const processApprove = async (id: string) => {
-    try {
-      await updateLog(id, { status: 'approved' });
-      alert('操作成功');
-      if (Platform.OS === 'web') {
-        window.location.reload();
-      }
-    } catch (error) {
-      Alert.alert('錯誤', '核准失敗');
-    }
-  };
-
-  const handleReturn = async (id: string) => {
-    console.log('[DEBUG] 觸發退回, ID:', id);
+  const handleReturn = (id: string) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm('確定退回此日誌？');
-      if (confirmed) {
-        await processReturn(id);
+      if (window.confirm('確定退回此日誌？')) {
+        handleStatusUpdate(id, 'rejected');
       }
       return;
     }
 
     Alert.alert('退回確認', '確定退回此日誌？', [
       { text: '取消', style: 'cancel' },
-      { text: '確認退回', style: 'destructive', onPress: () => processReturn(id) }
+      { text: '確認退回', style: 'destructive', onPress: () => handleStatusUpdate(id, 'rejected') }
     ]);
-  };
-
-  const processReturn = async (id: string) => {
-    try {
-      await updateLog(id, { status: 'rejected' });
-      alert('操作成功');
-      if (Platform.OS === 'web') {
-        window.location.reload();
-      }
-    } catch (error) {
-      Alert.alert('錯誤', '退回失敗');
-    }
   };
 
   // Photo Picker
@@ -410,10 +398,15 @@ export default function LogsScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle} accessibilityRole="header" accessibilityLabel={isEditMode ? '編輯施工日誌表單' : '新增施工日誌表單'}>
-                {isEditMode ? '編輯日誌' : '新增施工日誌'}
-              </Text>
-              <Text style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}>施工日誌詳情輸入區域</Text>
+              <View>
+                <Text style={styles.modalTitle} accessibilityRole="header">
+                  {isEditMode ? '編輯施工日誌' : '新增施工日誌'}
+                </Text>
+                {/* 增加隱藏的 Title 用於無障礙輔助環境 */}
+                <Text style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} aria-label="Dialog Title">
+                  {isEditMode ? '編輯施工日誌表單' : '新增施工日誌表單'}
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={() => !isSubmitting && setAddModalVisible(false)}
                 accessibilityLabel="關閉彈窗"
