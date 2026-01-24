@@ -286,19 +286,28 @@ export default function PersonnelScreen() {
           <Ionicons name="call" size={14} color="#666" style={{ marginRight: 5 }} />
           <Text style={styles.contactText}>{item.phone}</Text>
         </View>
-        {item.password && item.password !== item.initialPassword ? (
-          <View style={[styles.pwdRow, styles.pwdRowModified]}>
-            <Text style={[styles.pwdLabel, styles.pwdLabelModified]}>密碼：</Text>
-            <Text style={[styles.pwdValue, styles.pwdLabelModified]}>
-              {item.password.length > 20 ? '已自行變更' : item.password}
-            </Text>
-          </View>
-        ) : item.initialPassword ? (
-          <View style={styles.pwdRow}>
-            <Text style={styles.pwdLabel}>初始密碼：</Text>
-            <Text style={styles.pwdValue}>{item.initialPassword}</Text>
-          </View>
-        ) : null}
+        {(() => {
+          // [驗證邏輯修正] 只要密碼欄位存在且不等於初始密碼，即判定為已修改
+          const isDefault = !item.password || item.password === item.initialPassword;
+
+          if (isDefault) {
+            return item.initialPassword ? (
+              <View style={styles.pwdRow}>
+                <Text style={styles.pwdLabel}>初始密碼：</Text>
+                <Text style={styles.pwdValue}>{item.initialPassword}</Text>
+              </View>
+            ) : null;
+          } else {
+            return (
+              <View style={[styles.pwdRow, styles.pwdRowModified]}>
+                <Text style={[styles.pwdLabel, styles.pwdLabelModified]}>密碼：</Text>
+                <Text style={[styles.pwdValue, styles.pwdLabelModified]}>
+                  {(item.password?.length ?? 0) > 30 ? '已自行變更' : item.password}
+                </Text>
+              </View>
+            );
+          }
+        })()}
       </View>
     );
   };
