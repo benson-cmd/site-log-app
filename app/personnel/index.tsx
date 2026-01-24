@@ -6,8 +6,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { usePersonnel, Personnel, Education, Experience } from '../../context/PersonnelContext';
 import { useUser } from '../../context/UserContext';
 import { useEffect } from 'react';
+import { toast } from 'sonner';
 
-const DEPARTMENTS = ['總經理室', '工務部', '採購部', '行政部'];
+const DEPARTMENTS = ['總經理室', '工務部', '專案部', '採購部', '財務行政部'];
 
 export default function PersonnelScreen() {
   const router = useRouter();
@@ -112,8 +113,9 @@ export default function PersonnelScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.email || !formData.startDate || !formData.birthDate) {
-      showFeedback('錯誤', '姓名、Email (帳號)、到職日、生日為必填欄位');
+    // [手術級優化] 只保留姓名與 Email 為必填
+    if (!formData.name || !formData.email) {
+      toast.error('⚠️ 姓名與 Email 為必填欄位！');
       return;
     }
 
@@ -138,17 +140,17 @@ export default function PersonnelScreen() {
 
         await updatePersonnel(currentId, dataToSave);
         setModalVisible(false);
-        setTimeout(() => showFeedback('操作成功', '資料已更新'), 100);
+        toast.success('✅ 資料已更新');
       } else {
         await addPersonnel(finalData as Personnel);
         setModalVisible(false);
         const msg = finalData.initialPassword
           ? `人員已新增，初始密碼為：${finalData.initialPassword}`
           : '人員已新增';
-        setTimeout(() => showFeedback('操作成功', msg), 100);
+        toast.success('✅ ' + msg);
       }
     } catch (e) {
-      showFeedback('錯誤', '儲存失敗，請重試');
+      toast.error('❌ 儲存失敗，請重試');
       console.error(e);
     }
   };
@@ -337,63 +339,67 @@ export default function PersonnelScreen() {
 
             <ScrollView style={styles.formBody} showsVerticalScrollIndicator={true}>
               <Text style={styles.sectionHeader}>基本資料</Text>
-              <TextInput style={styles.input} placeholder="姓名 *" value={formData.name} onChangeText={t => setFormData({ ...formData, name: t })} />
-              <TextInput style={styles.input} placeholder="職稱 *" value={formData.title} onChangeText={t => setFormData({ ...formData, title: t })} />
 
-              <Text style={styles.label}>部門 *</Text>
-              <View style={styles.deptContainer}>
-                {DEPARTMENTS.map(dept => (
-                  <TouchableOpacity
-                    key={dept}
-                    style={[styles.chip, formData.department === dept && styles.chipActive]}
-                    onPress={() => setFormData({ ...formData, department: dept })}
-                  >
-                    <Text style={[styles.chipText, formData.department === dept && styles.chipTextActive]}>{dept}</Text>
-                  </TouchableOpacity>
-                ))}
+              {/* Row 1: 姓名 & 職稱 */}
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.label}>姓名 *</Text>
+                  <TextInput style={styles.input} placeholder="姓名" value={formData.name} onChangeText={t => setFormData({ ...formData, name: t })} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label}>職稱</Text>
+                  <TextInput style={styles.input} placeholder="職稱" value={formData.title} onChangeText={t => setFormData({ ...formData, title: t })} />
+                </View>
               </View>
 
-              <Text style={styles.label}>系統權限 *</Text>
-              <View style={styles.deptContainer}>
-                {[{ id: 'admin', label: '管理員' }, { id: 'user', label: '一般使用者' }].map(r => (
-                  <TouchableOpacity
-                    key={r.id}
-                    style={[styles.chip, formData.role === r.id && styles.chipActive]}
-                    onPress={() => setFormData({ ...formData, role: r.id as 'admin' | 'user' })}
-                  >
-                    <Text style={[styles.chipText, formData.role === r.id && styles.chipTextActive]}>{r.label}</Text>
-                  </TouchableOpacity>
-                ))}
+              {/* Row 2: 部門 & 系統權限 */}
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.label}>部門</Text>
+                  <View style={styles.deptContainer}>
+                    {DEPARTMENTS.map(dept => (
+                      <TouchableOpacity
+                        key={dept}
+                        style={[styles.chip, formData.department === dept && styles.chipActive, { paddingHorizontal: 8, paddingVertical: 5 }]}
+                        onPress={() => setFormData({ ...formData, department: dept })}
+                      >
+                        <Text style={[styles.chipText, formData.department === dept && styles.chipTextActive, { fontSize: 12 }]}>{dept}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label}>系統權限</Text>
+                  <View style={styles.deptContainer}>
+                    {[{ id: 'admin', label: '管理員' }, { id: 'user', label: '一般使用者' }].map(r => (
+                      <TouchableOpacity
+                        key={r.id}
+                        style={[styles.chip, formData.role === r.id && styles.chipActive, { paddingHorizontal: 8, paddingVertical: 5 }]}
+                        onPress={() => setFormData({ ...formData, role: r.id as 'admin' | 'user' })}
+                      >
+                        <Text style={[styles.chipText, formData.role === r.id && styles.chipTextActive, { fontSize: 12 }]}>{r.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               </View>
 
               <Text style={styles.label}>帳號與 Email (綁定) *</Text>
               <TextInput style={styles.input} placeholder="Email" value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} keyboardType="email-address" autoCapitalize="none" />
 
+              <Text style={styles.label}>電話</Text>
               <TextInput style={styles.input} placeholder="電話" value={formData.phone} onChangeText={t => setFormData({ ...formData, phone: t })} keyboardType="phone-pad" />
 
+              {/* 生日優先，到職日隨後 */}
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 5 }}>
-                  <Text style={styles.label}>到職日 *</Text>
-                  {renderDateInput('start', formData.startDate || '', '到職日')}
-                </View>
-                <View style={{ flex: 1, marginLeft: 5 }}>
-                  <Text style={styles.label}>生日 *</Text>
+                  <Text style={styles.label}>生日</Text>
                   {renderDateInput('birth', formData.birthDate || '', '生日')}
                 </View>
-              </View>
-
-              <Text style={styles.sectionHeader}>專業證照</Text>
-              <View style={styles.row}>
-                <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} placeholder="證照名稱" value={licenseInput} onChangeText={setLicenseInput} />
-                <TouchableOpacity style={styles.miniBtn} onPress={addLicense}><Text style={styles.miniBtnText}>新增</Text></TouchableOpacity>
-              </View>
-              <View style={styles.tagContainer}>
-                {formData.licenses?.map((lic, idx) => (
-                  <View key={idx} style={styles.tag}>
-                    <Text style={styles.tagText}>{lic}</Text>
-                    <TouchableOpacity onPress={() => removeLicense(idx)}><Ionicons name="close-circle" size={16} color="#555" /></TouchableOpacity>
-                  </View>
-                ))}
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.label}>到職日</Text>
+                  {renderDateInput('start', formData.startDate || '', '到職日')}
+                </View>
               </View>
 
               <Text style={styles.sectionHeader}>學歷</Text>
@@ -458,6 +464,20 @@ export default function PersonnelScreen() {
                   <TouchableOpacity onPress={() => removeExperience(i)}><Ionicons name="trash" color="#FF6B6B" size={18} /></TouchableOpacity>
                 </View>
               ))}
+
+              <Text style={styles.sectionHeader}>專業證照或技能</Text>
+              <View style={styles.row}>
+                <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} placeholder="證照名稱" value={licenseInput} onChangeText={setLicenseInput} />
+                <TouchableOpacity style={styles.miniBtn} onPress={addLicense}><Text style={styles.miniBtnText}>新增</Text></TouchableOpacity>
+              </View>
+              <View style={styles.tagContainer}>
+                {formData.licenses?.map((lic, idx) => (
+                  <View key={idx} style={styles.tag}>
+                    <Text style={styles.tagText}>{lic}</Text>
+                    <TouchableOpacity onPress={() => removeLicense(idx)}><Ionicons name="close-circle" size={16} color="#555" /></TouchableOpacity>
+                  </View>
+                ))}
+              </View>
 
               {isEditMode && (
                 <>
