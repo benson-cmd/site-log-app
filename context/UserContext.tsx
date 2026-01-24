@@ -30,8 +30,6 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     const initializeUser = async () => {
       if (typeof window !== 'undefined') {
         const storedUser = localStorage.getItem('dwcc_user_info');
-        // ⚠️ 加入這行測試：直接把抓到的內容彈出來看
-        alert("測試檢查 LocalStorage: " + storedUser);
         if (storedUser) {
           try {
             setUser(JSON.parse(storedUser));
