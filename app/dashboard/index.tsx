@@ -1,10 +1,12 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Modal, Alert, Platform, StatusBar, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useState, useEffect } from 'react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '../../src/lib/firebase';
 import { useUser } from '../../context/UserContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useLogs } from '../../context/LogContext';
-import { useState } from 'react';
 
 // Announcement Interface
 interface Announcement {
@@ -25,12 +27,33 @@ export default function DashboardScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
 
   // Announcement States
-  const [announcements, setAnnouncements] = useState<Announcement[]>([
-    { id: '1', title: '系統上線通知', content: '歡迎使用全新版本，功能選單與頁面路徑已全數修復。', date: '2026/01/15', author: '管理員' }
-  ]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [isLoadingNotices, setIsLoadingNotices] = useState(false);
   const [isAnnounceModalVisible, setAnnounceModalVisible] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [announceForm, setAnnounceForm] = useState({ title: '', content: '' });
+
+  // 0. Firestore Notice Logic
+  const fetchNotices = async () => {
+    try {
+      setIsLoadingNotices(true);
+      const q = query(collection(db, 'notices'), orderBy('date', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const list: Announcement[] = [];
+      querySnapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as Announcement);
+      });
+      setAnnouncements(list);
+    } catch (err) {
+      console.error('Fetch notices error:', err);
+    } finally {
+      setIsLoadingNotices(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotices();
+  }, []);
 
   // 1. 統計邏輯
   // 進行中專案：executionStatus = 'construction'
@@ -62,56 +85,68 @@ export default function DashboardScreen() {
     setAnnounceModalVisible(true);
   };
 
-  const handleSubmitAnnouncement = () => {
+  const handleSubmitAnnouncement = async () => {
     if (!isAdmin) {
-      Alert.alert('權限不足', '僅管理員可發布公告');
-      return;
-    }
-    if (!announceForm.title || !announceForm.content) {
-      Alert.alert('錯誤', '標題與內容不可為空');
+      alert('⚠️ 權限不足：僅管理員可發布公告');
       return;
     }
 
-    if (editingAnnouncement) {
-      // Update existing
-      setAnnouncements(prev => prev.map(a => a.id === editingAnnouncement.id ? {
-        ...a,
-        title: announceForm.title,
-        content: announceForm.content,
-        // Optional: update date or keep original
-      } : a));
-      Alert.alert('成功', '公告已更新');
-    } else {
-      // Create new
-      const newAnn: Announcement = {
-        id: Math.random().toString(36).substr(2, 9),
-        title: announceForm.title,
-        content: announceForm.content,
-        date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
-        author: user?.name || '管理員'
-      };
-      setAnnouncements([newAnn, ...announcements]);
-      Alert.alert('成功', '公告已發布');
+    // 1. 必填驗證
+    if (!announceForm.title?.trim()) {
+      alert('⚠️ 錯誤：請輸入公告標題！');
+      return;
     }
-    setAnnounceModalVisible(false);
+    if (!announceForm.content?.trim()) {
+      alert('⚠️ 錯誤：請輸入公告內容！');
+      return;
+    }
+
+    try {
+      if (editingAnnouncement) {
+        // Update existing in Firestore
+        const docRef = doc(db, 'notices', editingAnnouncement.id);
+        await updateDoc(docRef, {
+          title: announceForm.title,
+          content: announceForm.content,
+          updatedAt: new Date().toISOString()
+        });
+        alert('✅ 成功：公告已更新');
+      } else {
+        // Create new in Firestore
+        await addDoc(collection(db, 'notices'), {
+          title: announceForm.title,
+          content: announceForm.content,
+          date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
+          author: user?.name || '管理員',
+          createdAt: new Date().toISOString()
+        });
+        alert('✅ 成功：公告已發布');
+      }
+      setAnnounceModalVisible(false);
+      fetchNotices(); // 重新讀取
+    } catch (err: any) {
+      alert('❌ 發生錯誤：' + err.message);
+    }
   };
 
   // Delete Announcement
-  const handleDeleteAnnouncement = () => {
+  const handleDeleteAnnouncement = async () => {
     if (!isAdmin) {
-      Alert.alert('權限不足', '僅管理員可刪除公告');
+      alert('⚠️ 權限不足：僅管理員可刪除公告');
       return;
     }
     if (!editingAnnouncement) return;
-    Alert.alert('確認刪除', '確定要刪除此公告嗎？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '刪除', style: 'destructive', onPress: () => {
-          setAnnouncements(prev => prev.filter(a => a.id !== editingAnnouncement.id));
-          setAnnounceModalVisible(false);
-        }
+
+    if (window.confirm('確定要永久刪除此公告嗎？（刪除後無法復原）')) {
+      try {
+        await deleteDoc(doc(db, 'notices', editingAnnouncement.id));
+        alert('🗑️ 公告已刪除');
+        setAnnounceModalVisible(false);
+        fetchNotices(); // 重新讀取
+      } catch (err: any) {
+        alert('❌ 刪除失敗：' + err.message);
       }
-    ]);
+    }
   };
 
   const menuItems = [
