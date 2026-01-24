@@ -23,6 +23,7 @@ export default function LogsScreen() {
     project: '', date: '', weather: '晴', content: '', machines: [], labor: [], reporter: '', photos: [], todayProgress: ''
   });
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Project Selection
   const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -285,10 +286,12 @@ export default function LogsScreen() {
 
     return (
       <View style={styles.card}>
-        {/* Status Badge */}
-        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-          <Text style={styles.statusText}>{statusText}</Text>
-        </View>
+        {/* Status Badge - 僅管理員顯示 */}
+        {isAdmin && (
+          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusText}>{statusText}</Text>
+          </View>
+        )}
 
         <View style={styles.cardHeader}>
           <View style={styles.dateBadge}>
@@ -338,7 +341,9 @@ export default function LogsScreen() {
         {item.photos && item.photos.length > 0 && (
           <ScrollView horizontal style={styles.photoScroll} showsHorizontalScrollIndicator={false}>
             {item.photos.map((url, idx) => (
-              <Image key={idx} source={{ uri: url }} style={styles.cardPhoto} />
+              <TouchableOpacity key={idx} onPress={() => setPreviewImage(url)}>
+                <Image source={{ uri: url }} style={styles.cardPhoto} />
+              </TouchableOpacity>
             ))}
           </ScrollView>
         )}
@@ -666,6 +671,22 @@ export default function LogsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* 放大預覽 Modal */}
+      <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
+        <TouchableOpacity
+          style={(extraStyles as any).previewOverlay}
+          activeOpacity={1}
+          onPress={() => setPreviewImage(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={(extraStyles as any).previewContent}>
+            <Image source={{ uri: previewImage || '' }} style={(extraStyles as any).fullImage} resizeMode="contain" />
+            <TouchableOpacity style={(extraStyles as any).closePreviewBtn} onPress={() => setPreviewImage(null)}>
+              <Ionicons name="close-circle" size={40} color="#fff" />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -857,3 +878,30 @@ const styles = StyleSheet.create({
     marginLeft: 5
   }
 });
+// 圖片預覽樣式 (由 Antigravity 手術級補丁加入)
+const extraStyles = StyleSheet.create({
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  previewContent: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  fullImage: {
+    width: '95%',
+    height: '80%'
+  },
+  closePreviewBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    right: 20,
+    zIndex: 10
+  }
+});
+
+// 為了不破壞原本的 styles 物件，我們在 Modal 中直接使用 extraStyles
