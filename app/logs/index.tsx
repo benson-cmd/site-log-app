@@ -36,6 +36,16 @@ export default function LogsScreen() {
   // Check Admin
   const isAdmin = user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw'; // Simple check
 
+  // [手術級優化] 列表可視範圍過濾
+  // 1. 管理員可看所有
+  // 2. 作者可看自己的所有 (包含待審核、被退回)
+  // 3. 一般人只能看到「已核准」的公開日誌
+  const visibleLogs = sortedLogs.filter(log =>
+    isAdmin ||
+    log.reporterId === user?.uid ||
+    log.status === 'approved'
+  );
+
   // Init Form
   const resetForm = () => {
     setNewLog({
@@ -390,7 +400,10 @@ export default function LogsScreen() {
 
         <View style={styles.cardFooter}>
           <Text style={styles.reporterText}>填寫人：{item.reporter}</Text>
-          {(isAdmin || item.reporterId === user?.uid) && (
+          {/* [手術級優化] 編輯/刪除按鈕顯示條件 */}
+          {/* 1. 管理員(isAdmin) */}
+          {/* 2. 作者本人(reporterId === uid) 且 狀態不為 'approved' (已核准不可再改，除非管理員) */}
+          {(isAdmin || (item.reporterId === user?.uid && item.status !== 'approved')) && (
             <View style={{ flexDirection: 'row', gap: 15 }}>
               <TouchableOpacity onPress={() => handleOpenEdit(item)}>
                 <Ionicons name="create-outline" size={24} color="#C69C6D" />
@@ -423,7 +436,7 @@ export default function LogsScreen() {
       <StatusBar barStyle="light-content" />
 
       <FlatList
-        data={sortedLogs}
+        data={visibleLogs}
         keyExtractor={item => item.id}
         renderItem={({ item }) => <LogCard item={item} />}
         contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
