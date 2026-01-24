@@ -9,6 +9,7 @@ export interface User {
   title?: string;          // 職稱
   name?: string;
   department?: string;
+  uid?: string;            // Firestore 文件 ID
 }
 
 interface UserContextType {
@@ -35,7 +36,8 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           name: '吳資彬', // Backup Name
           role: 'admin',
           title: '總經理',
-          department: '總經理室'
+          department: '總經理室',
+          uid: 'admin_backup'
         });
         return true;
       }
@@ -67,7 +69,8 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           name: userData.name,
           role: userData.role || 'user',
           title: userData.title || '員工',
-          department: userData.department
+          department: userData.department,
+          uid: docSnapshot.id
         });
         return true;
       }

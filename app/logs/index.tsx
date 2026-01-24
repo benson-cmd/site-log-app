@@ -3,6 +3,8 @@ import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import { deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../src/lib/firebase';
 import { useProjects } from '../../context/ProjectContext';
 import { useUser } from '../../context/UserContext';
 import { useLogs, LogEntry, MachineItem, LaborItem } from '../../context/LogContext';
@@ -166,7 +168,9 @@ export default function LogsScreen() {
           machines: sanitizedMachines,
           labor: sanitizedLabor,
           date: submissionDate,
-          photos: uploadedUrls
+          photos: uploadedUrls,
+          reporterId: newLog.reporterId || user?.uid, // 確保編輯時保留或更新 ID
+          status: 'pending_review' // [手術級優化] 退回後重新提交，狀態變回待審核
         };
         const cleanUpdateData = JSON.parse(JSON.stringify(updateData));
         await updateLog(editingId, cleanUpdateData);
@@ -181,6 +185,7 @@ export default function LogsScreen() {
           labor: sanitizedLabor,
           plannedProgress: newLog.plannedProgress,
           reporter: newLog.reporter || user?.name || '使用者',
+          reporterId: user?.uid, // 紀錄提交者 UID
           status: 'pending_review',
           photos: uploadedUrls
         };
@@ -255,6 +260,30 @@ export default function LogsScreen() {
     ]);
   };
 
+  const handleDelete = (id: string) => {
+    const performDelete = async () => {
+      try {
+        await deleteDoc(doc(db, 'logs', id));
+        Alert.alert('成功', '施工日誌已永久刪除');
+        // 不需要手動刷新，由於 LogContext 使用 onSnapshot，列表會自動更新
+      } catch (err: any) {
+        Alert.alert('錯誤', '刪除失敗: ' + err.message);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('確定要永久刪除此筆施工日誌嗎？（刪除後無法復原）')) {
+        performDelete();
+      }
+      return;
+    }
+
+    Alert.alert('刪除確認', '確定要永久刪除此筆施工日誌嗎？', [
+      { text: '取消', style: 'cancel' },
+      { text: '永久刪除', style: 'destructive', onPress: performDelete }
+    ]);
+  };
+
   // Photo Picker
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -281,8 +310,9 @@ export default function LogsScreen() {
 
   const LogCard = ({ item }: { item: LogEntry }) => {
     const isPending = item.status === 'pending_review';
-    const statusColor = item.status === 'approved' ? '#4CAF50' : (item.status === 'rejected' ? '#F44336' : '#FF9800');
-    const statusText = item.status === 'approved' ? '已核准' : (item.status === 'rejected' ? '已退回' : (item.status === 'draft' ? '草稿' : '待審核'));
+    const isRejected = item.status === 'rejected';
+    const statusColor = item.status === 'approved' ? '#4CAF50' : (isRejected ? '#F44336' : '#FF9800');
+    const statusText = item.status === 'approved' ? '已核准' : (isRejected ? '已退回（請修正）' : (item.status === 'draft' ? '草稿' : '待審核'));
 
     return (
       <View style={styles.card}>
@@ -303,6 +333,16 @@ export default function LogsScreen() {
           </View>
         </View>
         <Text style={styles.projectTitle}>{item.project}</Text>
+
+        {/* 退回引導文字 */}
+        {isRejected && (
+          <View style={(extraStyles as any).guidanceContainer}>
+            <Ionicons name="alert-circle" size={18} color="#F44336" />
+            <Text style={(extraStyles as any).guidanceText}>
+              此日誌已被管理員退回，請點擊編輯圖示修正後重新提交
+            </Text>
+          </View>
+        )}
 
         <View style={styles.contentBox}>
           <Text style={styles.contentLabel}>施工內容：</Text>
@@ -350,10 +390,15 @@ export default function LogsScreen() {
 
         <View style={styles.cardFooter}>
           <Text style={styles.reporterText}>填寫人：{item.reporter}</Text>
-          {item.reporter === user?.name && (
-            <TouchableOpacity onPress={() => handleOpenEdit(item)}>
-              <Ionicons name="create-outline" size={24} color="#C69C6D" />
-            </TouchableOpacity>
+          {(isAdmin || item.reporterId === user?.uid) && (
+            <View style={{ flexDirection: 'row', gap: 15 }}>
+              <TouchableOpacity onPress={() => handleOpenEdit(item)}>
+                <Ionicons name="create-outline" size={24} color="#C69C6D" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(item.id)}>
+                <Ionicons name="trash-outline" size={24} color="#FF6B6B" />
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -901,6 +946,24 @@ const extraStyles = StyleSheet.create({
     top: Platform.OS === 'ios' ? 60 : 40,
     right: 20,
     zIndex: 10
+  },
+  // 退回引導樣式
+  guidanceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#FFCDD2'
+  },
+  guidanceText: {
+    color: '#F44336',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1
   }
 });
 

@@ -31,6 +31,7 @@ export interface LogEntry {
   status: 'draft' | 'pending_review' | 'approved' | 'rejected';
   photos?: string[];
   notes?: string;         // 新增備註欄位
+  reporterId?: string;    // 新增提交者 ID 用於權限控管
 }
 
 interface LogContextType {

@@ -177,17 +177,19 @@ export default function DashboardScreen() {
           </View>
         ))}
 
-        {/* Dashboard Widgets (Stats) */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statBox}>
-            <Text style={styles.statNumber}>{activeProjectsCount}</Text>
-            <Text style={styles.statLabel}>進行中專案</Text>
+        {/* Dashboard Widgets (Stats) - 僅管理員可見 */}
+        {isAdmin && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statBox}>
+              <Text style={styles.statNumber}>{activeProjectsCount}</Text>
+              <Text style={styles.statLabel}>進行中專案</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statNumber}>{pendingLogsCount}</Text>
+              <Text style={styles.statLabel}>待審核紀錄</Text>
+            </View>
           </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statNumber}>{pendingLogsCount}</Text>
-            <Text style={styles.statLabel}>待審核紀錄</Text>
-          </View>
-        </View>
+        )}
 
       </ScrollView>
 
