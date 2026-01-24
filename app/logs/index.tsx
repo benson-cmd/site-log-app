@@ -115,10 +115,8 @@ export default function LogsScreen() {
         }
 
         try {
-          // 修改呼叫點：確保傳給 uploadPhoto 的是純網址字串
-          // 使用 (photoUri as any) 解決 'never' 或類型不匹配問題
-          const actualUri = (photoUri as any)?.uri || photoUri;
-          const remoteUrl = await uploadPhoto(actualUri);
+          // [手術級修正] 確保傳給 uploadPhoto 的是「純網址字串」而非整個物件
+          const remoteUrl = await uploadPhoto(typeof photoUri === 'object' ? (photoUri as any).uri : photoUri);
           setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
           return remoteUrl;
         } catch (err: any) {
@@ -236,6 +234,7 @@ export default function LogsScreen() {
 
   // Approval Handlers
   const handleApprove = (id: string) => {
+    alert('正在核准 ID: ' + id);
     if (Platform.OS === 'web') {
       if (window.confirm('確定核准此施工日誌？')) {
         handleStatusUpdate(id, 'approved');
@@ -250,6 +249,7 @@ export default function LogsScreen() {
   };
 
   const handleReturn = (id: string) => {
+    alert('正在退回 ID: ' + id);
     if (Platform.OS === 'web') {
       if (window.confirm('確定退回此日誌？')) {
         handleStatusUpdate(id, 'rejected');

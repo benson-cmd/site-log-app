@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { db } from '../src/lib/firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
@@ -65,9 +66,8 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
 
       const formData = new FormData();
 
-      // [手術級修正] Web 端絕對不可使用 { uri: ... } 包裝
-      if (typeof window !== 'undefined' && !((window as any).ReactNativeWebView)) {
-        // Web 環境：傳入純字串或 Blob (Cloudinary 在 Web 端支援傳入網址字串)
+      // [手術級修正] Web 端絕對不可使用 { uri: ... } 包裝，直接使用網址字串
+      if (Platform.OS === 'web') {
         formData.append('file', fileToUpload);
       } else {
         // React Native 環境處理
