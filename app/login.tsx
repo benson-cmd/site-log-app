@@ -1,9 +1,8 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, Image, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { useRouter, Link } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
 
 // 定義明亮主題配色
 const THEME = {
@@ -39,223 +38,155 @@ export default function LoginScreen() {
   };
 
   return (
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1541888941259-7907ff14e94b?q=80&w=2070&auto=format&fit=crop' }}
-      style={styles.background}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
     >
-      <View style={styles.overlay}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.container}
-        >
-          <StatusBar style="light" />
-          <SafeAreaView style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.loginCard}>
-                {/* Logo Section */}
-                <View style={styles.logoBadge}>
-                  <Image
-                    source={require('../assets/logo.png')}
-                    style={styles.logo}
-                    resizeMode="contain"
-                  />
-                  <Text style={styles.title}>DW工程日誌系統</Text>
-                </View>
+      <StatusBar style="dark" />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.formContainer}>
+          {/* Logo */}
+          <Image
+            source={require('../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
 
-                {/* Account Input */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>帳號 (Email)</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="mail-outline" size={20} color={THEME.accent} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="請輸入Email"
-                      placeholderTextColor={THEME.placeholder}
-                      value={email}
-                      onChangeText={setEmail}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  </View>
-                </View>
+          {/* 主標題 */}
+          <Text style={styles.title}>DW工程日誌系統</Text>
 
-                {/* Password Input */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>密碼</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed-outline" size={20} color={THEME.accent} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="請輸入密碼"
-                      placeholderTextColor={THEME.placeholder}
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry
-                    />
-                  </View>
-                </View>
+          {/* 已移除「德旺營造」副標題 */}
 
-                <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
-                  onPress={handleLogin}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.buttonText}>{isLoading ? '登入中...' : '登入系統'}</Text>
-                </TouchableOpacity>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>帳號 (Email)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="請輸入Email"
+              placeholderTextColor={THEME.placeholder}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
 
-                <View style={styles.linkContainer}>
-                  <Link href="/forgot-password" asChild>
-                    <TouchableOpacity>
-                      <Text style={styles.forgetPwdText}>忘記密碼？</Text>
-                    </TouchableOpacity>
-                  </Link>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>密碼</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="請輸入密碼"
+              placeholderTextColor={THEME.placeholder}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
 
-                  <Link href="/register" asChild>
-                    <TouchableOpacity>
-                      <Text style={styles.registerText}>申請註冊帳號</Text>
-                    </TouchableOpacity>
-                  </Link>
-                </View>
-              </View>
-            </ScrollView>
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>{isLoading ? '登入中...' : '登入系統'}</Text>
+          </TouchableOpacity>
 
-            {/* Footer Text */}
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>© 2026 DW Construction Co., Ltd. All Rights Reserved.</Text>
-            </View>
-          </SafeAreaView>
-        </KeyboardAvoidingView>
-      </View>
-    </ImageBackground>
+
+          {/* === 新增這一段：忘記密碼 === */}
+          <Link href="/forgot-password" asChild>
+            <TouchableOpacity style={{ marginTop: 15 }}>
+              <Text style={{ color: '#666666', textDecorationLine: 'underline' }}>
+                忘記密碼？
+              </Text>
+            </TouchableOpacity>
+          </Link>
+
+          {/* ... 下面是註冊連結 ... */}
+          <Link href="/register" asChild>
+            <TouchableOpacity style={styles.linkButton}>
+              <Text style={styles.linkText}>沒有帳號？申請註冊</Text>
+            </TouchableOpacity>
+          </Link>
+
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-  },
   container: {
     flex: 1,
+    backgroundColor: THEME.background,
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: 20,
   },
-  loginCard: {
+  formContainer: {
     width: '100%',
-    maxWidth: 450, // 稍微加寬一點
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    padding: 40,
+    maxWidth: 400,
     alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.58,
-    shadowRadius: 16.00,
-    elevation: 24,
-  },
-  logoBadge: {
     alignItems: 'center',
-    marginBottom: 40,
   },
   logo: {
-    width: 200,
-    height: 60,
-    marginBottom: 15,
+    width: 220, // 稍微加大一點 Logo
+    height: 70,
+    marginBottom: 10,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 32,
+    fontWeight: 'bold',
     color: THEME.textPrimary,
+    marginBottom: 40, // 增加間距，讓標題跟輸入框分開一點，取代原本副標題的位置
     textAlign: 'center',
-    letterSpacing: 1,
   },
   inputGroup: {
     width: '100%',
     marginBottom: 20,
   },
   label: {
-    color: THEME.textPrimary,
-    marginBottom: 10,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: THEME.inputBg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.inputBorder,
-    height: 54, // 增加高度
-  },
-  inputIcon: {
-    paddingLeft: 15,
-    paddingRight: 10,
+    color: '#333333',
+    marginBottom: 8,
+    fontWeight: '600',
   },
   input: {
-    flex: 1,
+    backgroundColor: THEME.inputBg,
+    borderWidth: 1,
+    borderColor: THEME.inputBorder,
+    borderRadius: 8,
+    padding: 15,
     fontSize: 16,
     color: '#000000',
-    paddingRight: 15,
-    height: '100%',
   },
   button: {
     width: '100%',
     backgroundColor: THEME.accent,
-    height: 54,
-    borderRadius: 12,
-    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 15,
-    shadowColor: THEME.accent,
+    marginTop: 10,
+    shadowColor: '#C69C6D', // 增加一點金色陰影讓按鈕更立體
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonText: {
-    color: '#ffffff',
+    color: '#000000',
     fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 2,
+    fontWeight: 'bold',
   },
-  linkContainer: {
-    marginTop: 25,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  linkButton: {
+    marginTop: 20,
+    padding: 10,
   },
-  forgetPwdText: {
-    color: THEME.textSecondary,
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
-  registerText: {
-    color: THEME.accent,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 20,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  footerText: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 12,
+  linkText: {
+    color: THEME.textPrimary,
+    fontSize: 16,
     textAlign: 'center',
   },
 });

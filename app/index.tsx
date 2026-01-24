@@ -1,10 +1,20 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, Modal, ImageBackground, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../src/lib/firebase';
 import { Ionicons } from '@expo/vector-icons';
+import { StatusBar } from 'expo-status-bar';
+
+const THEME = {
+  primary: '#002147',
+  accent: '#C69C6D',
+  background: '#F5F7FA',
+  placeholder: '#999999',
+  inputBg: '#f9f9f9',
+  border: '#e0e0e0'
+};
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -67,57 +77,88 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1541888941259-7907ff14e94b?q=80&w=2070&auto=format&fit=crop' }}
+      style={styles.backgroundImage}
     >
-      <ScrollView contentContainerStyle={styles.container}>
-        <Image
-          source={require('../assets/logo.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+      <View style={styles.overlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <StatusBar style="light" />
+          <SafeAreaView style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.loginCard}>
+                {/* Logo Section */}
+                <View style={styles.logoBadge}>
+                  <Image
+                    source={require('../assets/logo.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                  <Text style={styles.title}>DW工程日誌系統</Text>
+                </View>
 
-        <Text style={styles.title}>DW工程日誌系統</Text>
+                {/* Account Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>帳號 (Email)</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="mail-outline" size={20} color={THEME.accent} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="請輸入 Email"
+                      placeholderTextColor={THEME.placeholder}
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+                </View>
 
-        <View style={styles.formCard}>
-          <Text style={styles.label}>帳號</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="請輸入 Email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
+                {/* Password Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>密碼</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed-outline" size={20} color={THEME.accent} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="請輸入密碼"
+                      placeholderTextColor={THEME.placeholder}
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry
+                    />
+                  </View>
+                </View>
 
-          <Text style={styles.label}>密碼</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="請輸入密碼"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+                <TouchableOpacity
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  onPress={handleLogin}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>登入系統</Text>
+                  )}
+                </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>登入系統</Text>
-            )}
-          </TouchableOpacity>
+                <TouchableOpacity style={styles.forgotBtn} onPress={() => setForgotModalVisible(true)}>
+                  <Text style={styles.forgotText}>忘記密碼？</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
-          <TouchableOpacity style={styles.forgotBtn} onPress={() => setForgotModalVisible(true)}>
-            <Text style={styles.forgotText}>忘記密碼？</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.footerText}>© 2026 DW Construction Co., Ltd.</Text>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>© 2026 DW Construction Co., Ltd. All Rights Reserved.</Text>
+            </View>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
 
         {/* Forgot Password Modal */}
         <Modal visible={isForgotModalVisible} transparent animationType="fade">
@@ -150,95 +191,131 @@ export default function LoginScreen() {
             </View>
           </View>
         </Modal>
-
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  scrollContent: {
     flexGrow: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: 30,
+    padding: 20,
   },
-  logo: {
-    width: 150,
-    height: 150,
-    marginBottom: 20,
+  loginCard: {
+    width: '100%',
+    maxWidth: 450,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 40,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.58,
+    shadowRadius: 16.00,
+    elevation: 24,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#002147',
+  logoBadge: {
+    alignItems: 'center',
     marginBottom: 40,
   },
-  formCard: {
+  logo: {
+    width: 200,
+    height: 60,
+    marginBottom: 15,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: THEME.primary,
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  inputGroup: {
     width: '100%',
-    padding: 25,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    // Shadow properties for iOS
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    // Elevation for Android
-    elevation: 4,
-    // Border properties corrected - no shorthand 'border'
-    borderWidth: 1,
-    borderColor: '#eee',
+    marginBottom: 20,
   },
   label: {
+    color: THEME.primary,
+    marginBottom: 10,
+    fontWeight: '700',
     fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-    fontWeight: '500',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.inputBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    height: 54,
+  },
+  inputIcon: {
+    paddingLeft: 15,
+    paddingRight: 10,
   },
   input: {
-    backgroundColor: '#f9f9f9',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    marginBottom: 20,
+    flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: '#000000',
+    paddingRight: 15,
+    height: '100%',
   },
   button: {
-    backgroundColor: '#002147',
-    paddingVertical: 15,
-    borderRadius: 8,
+    width: '100%',
+    backgroundColor: THEME.primary,
+    height: 54,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 15,
+    shadowColor: THEME.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
   },
   buttonDisabled: {
-    backgroundColor: '#889bb0',
+    opacity: 0.7,
   },
   buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 2,
   },
   forgotBtn: {
-    marginTop: 15,
+    marginTop: 20,
     alignSelf: 'center',
     padding: 5
   },
   forgotText: {
-    color: '#C69C6D',
+    color: THEME.accent,
     fontSize: 14,
-    fontWeight: 'bold'
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   footerText: {
-    marginTop: 50,
-    color: '#bbb',
+    color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 12,
+    textAlign: 'center',
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
