@@ -8,6 +8,7 @@ import Papa from 'papaparse';
 import { useUser } from '../../context/UserContext';
 import { useProjects, Project, Extension, ChangeDesign, SubsequentExpansion, SchedulePoint } from '../../context/ProjectContext';
 import { usePersonnel } from '../../context/PersonnelContext';
+import { toast } from 'sonner';
 
 const THEME = {
   primary: '#C69C6D',
@@ -357,7 +358,12 @@ export default function ProjectsScreen() {
 
   // Submit
   const handleSubmitProject = () => {
-    if (!newProject.name || !newProject.startDate) { Alert.alert('錯誤', '專案名稱與開工日為必填'); return; }
+    // [手術級優化] 只保留專案名稱為必填
+    if (!newProject.name) {
+      toast.error('⚠️ 請輸入專案名稱！');
+      return;
+    }
+
     addProject({
       ...newProject,
       contractAmount: parseFloat(newProject.contractAmount?.toString() || '0'),
@@ -369,12 +375,14 @@ export default function ProjectsScreen() {
       currentActualProgress: newProject.currentActualProgress || 0,
       currentContractAmount: currentTotalAmount
     } as any);
+
     setAddModalVisible(false);
     setNewProject({ name: '', address: '', manager: '', executionStatus: 'not_started', status: 'planning', startDate: '', contractDuration: 0, progress: 0, extensions: [], contractAmount: 0, changeDesigns: [], subsequentExpansions: [], scheduleData: [] });
     setExtForm({ days: '', date: '', docNumber: '', reason: '' });
     setCdForm({ count: '1', date: '', docNumber: '', reason: '', newTotalAmount: '' });
     setSeForm({ count: '1', date: '', docNumber: '', reason: '', amount: '' });
-    Alert.alert('成功', '專案已新增');
+
+    toast.success('✅ 專案已新增');
   };
 
   // Filter
@@ -519,11 +527,11 @@ export default function ProjectsScreen() {
                   {renderDateInput('award', newProject.awardDate || '', '選擇日期')}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>開工日期 *</Text>
+                  <Text style={styles.label}>開工日期</Text>
                   {renderDateInput('start', newProject.startDate || '', '選擇日期')}
                 </View>
               </View>
-              <Text style={styles.label}>契約工期 (天) *</Text>
+              <Text style={styles.label}>契約工期 (日曆天)</Text>
               <TextInput
                 style={styles.input}
                 value={newProject.contractDuration?.toString() || ''}
