@@ -5,6 +5,7 @@ import { ProjectProvider } from '../context/ProjectContext';
 import { LogProvider } from '../context/LogContext';
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import { Toaster } from 'sonner';
 
 const AuthCheck = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useUser();
@@ -44,6 +45,7 @@ const AuthCheck = ({ children }: { children: React.ReactNode }) => {
 export default function RootLayout() {
   return (
     <UserProvider>
+      <Toaster position="top-center" richColors />
       <PersonnelProvider>
         <ProjectProvider>
           <LogProvider>

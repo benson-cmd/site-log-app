@@ -8,6 +8,7 @@ import { db } from '../../src/lib/firebase';
 import { useProjects } from '../../context/ProjectContext';
 import { useUser } from '../../context/UserContext';
 import { useLogs, LogEntry, MachineItem, LaborItem } from '../../context/LogContext';
+import { toast } from 'sonner';
 
 export default function LogsScreen() {
   const router = useRouter();
@@ -106,17 +107,17 @@ export default function LogsScreen() {
   const onSubmit = async () => {
     // [網頁相容性修復] 1. 檢查專案 (嚴格檢查 undefined 或 null)
     if (!newLog.project) {
-      alert('⚠️ 錯誤：請務必選擇「專案名稱」！');
+      toast.error('⚠️ 錯誤：請務必選擇「專案名稱」！');
       return; // 強制中斷
     }
     // [網頁相容性修復] 2. 檢查內容 (過濾掉只打空白鍵的情況)
     if (!newLog.content || newLog.content.trim().length === 0) {
-      alert('⚠️ 錯誤：請填寫「今日施工項目」！');
+      toast.error('⚠️ 錯誤：請填寫「今日施工項目」！');
       return; // 強制中斷
     }
 
     if (!newLog.date || !newLog.weather) {
-      alert('⚠️ 錯誤：請填寫完整日期與天氣！');
+      toast.error('⚠️ 錯誤：請填寫完整日期與天氣！');
       return;
     }
 
@@ -153,7 +154,7 @@ export default function LogsScreen() {
         const results = await Promise.all(uploadPromises);
         uploadedUrls = results.filter(url => typeof url === 'string' && url.startsWith('http'));
       } catch (uploadError: any) {
-        Alert.alert('照片上傳失敗', `照片傳送發生錯誤，請檢查 Cloudinary 設定。\n\n細節: ${uploadError.message}`);
+        toast.error('照片上傳失敗: ' + uploadError.message);
         setIsSubmitting(false);
         return;
       }
@@ -223,7 +224,7 @@ export default function LogsScreen() {
         }
       }
 
-      Alert.alert('儲存成功', '施工日誌已提交且進度已同步。');
+      toast.success('✅ 儲存成功：施工日誌已提交且進度已同步。');
 
       // 手術級修正：強制強迫重置並關閉
       setNewLog(prev => ({ ...prev, photos: [] }));
@@ -233,7 +234,7 @@ export default function LogsScreen() {
 
     } catch (error: any) {
       console.error('[DEBUG] 提交過程崩潰:', error);
-      Alert.alert('儲存失敗', error.message || '系統發生未知錯誤');
+      toast.error('❌ 儲存失敗：' + (error.message || '系統發生未知錯誤'));
     } finally {
       setIsSubmitting(false);
     }
@@ -243,9 +244,9 @@ export default function LogsScreen() {
   const handleStatusUpdate = async (id: string, newStatus: string) => {
     try {
       await updateLog(id, { status: newStatus as any });
-      Alert.alert('儲存成功', `日誌已改為：${newStatus === 'approved' ? '已核准' : '已退回'}`);
+      toast.success(`✅ 儲存成功：日誌已改為 ${newStatus === 'approved' ? '已核准' : '已退回'}`);
     } catch (e: any) {
-      Alert.alert('錯誤', '更新失敗: ' + e.message);
+      toast.error('❌ 更新失敗: ' + e.message);
     }
   };
 
@@ -282,10 +283,10 @@ export default function LogsScreen() {
     const performDelete = async () => {
       try {
         await deleteDoc(doc(db, 'logs', id));
-        Alert.alert('成功', '施工日誌已永久刪除');
+        toast.success('🗑️ 公告已永久刪除');
         // 不需要手動刷新，由於 LogContext 使用 onSnapshot，列表會自動更新
       } catch (err: any) {
-        Alert.alert('錯誤', '刪除失敗: ' + err.message);
+        toast.error('❌ 刪除失敗: ' + err.message);
       }
     };
 

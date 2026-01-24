@@ -7,6 +7,7 @@ import { db } from '../../src/lib/firebase';
 import { useUser } from '../../context/UserContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useLogs } from '../../context/LogContext';
+import { toast } from 'sonner';
 
 // Announcement Interface
 interface Announcement {
@@ -87,17 +88,17 @@ export default function DashboardScreen() {
 
   const handleSubmitAnnouncement = async () => {
     if (!isAdmin) {
-      alert('⚠️ 權限不足：僅管理員可發布公告');
+      toast.error('⚠️ 權限不足：僅管理員可發布公告');
       return;
     }
 
     // 1. 必填驗證
     if (!announceForm.title?.trim()) {
-      alert('⚠️ 錯誤：請輸入公告標題！');
+      toast.error('⚠️ 錯誤：請輸入公告標題！');
       return;
     }
     if (!announceForm.content?.trim()) {
-      alert('⚠️ 錯誤：請輸入公告內容！');
+      toast.error('⚠️ 錯誤：請輸入公告內容！');
       return;
     }
 
@@ -110,7 +111,7 @@ export default function DashboardScreen() {
           content: announceForm.content,
           updatedAt: new Date().toISOString()
         });
-        alert('✅ 成功：公告已更新');
+        toast.success('✅ 成功：公告已更新');
       } else {
         // Create new in Firestore
         await addDoc(collection(db, 'notices'), {
@@ -120,19 +121,19 @@ export default function DashboardScreen() {
           author: user?.name || '管理員',
           createdAt: new Date().toISOString()
         });
-        alert('✅ 成功：公告已發布');
+        toast.success('✅ 成功：公告已發布');
       }
       setAnnounceModalVisible(false);
       fetchNotices(); // 重新讀取
     } catch (err: any) {
-      alert('❌ 發生錯誤：' + err.message);
+      toast.error('❌ 發生錯誤：' + err.message);
     }
   };
 
   // Delete Announcement
   const handleDeleteAnnouncement = async () => {
     if (!isAdmin) {
-      alert('⚠️ 權限不足：僅管理員可刪除公告');
+      toast.error('⚠️ 權限不足：僅管理員可刪除公告');
       return;
     }
     if (!editingAnnouncement) return;
@@ -140,11 +141,11 @@ export default function DashboardScreen() {
     if (window.confirm('確定要永久刪除此公告嗎？（刪除後無法復原）')) {
       try {
         await deleteDoc(doc(db, 'notices', editingAnnouncement.id));
-        alert('🗑️ 公告已刪除');
+        toast.success('🗑️ 公告已刪除');
         setAnnounceModalVisible(false);
         fetchNotices(); // 重新讀取
       } catch (err: any) {
-        alert('❌ 刪除失敗：' + err.message);
+        toast.error('❌ 刪除失敗：' + err.message);
       }
     }
   };
