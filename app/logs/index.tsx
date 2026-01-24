@@ -106,7 +106,7 @@ export default function LogsScreen() {
   const onSubmit = async () => {
     // [手術級優化] 強制表單驗證：內容不可為空
     if (!newLog.content || !newLog.content.trim()) {
-      Alert.alert('提示', '請填寫施工內容！');
+      Alert.alert('提示', '請填寫今日施工項目！');
       return;
     }
 
@@ -329,8 +329,8 @@ export default function LogsScreen() {
 
     return (
       <View style={styles.card}>
-        {/* Status Badge - 僅管理員顯示 */}
-        {isAdmin && (
+        {/* Status Badge - 僅管理員或作者本人顯示 */}
+        {(isAdmin || item.reporterId === user?.uid) && (
           <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
             <Text style={styles.statusText}>{statusText}</Text>
           </View>
