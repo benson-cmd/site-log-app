@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Image, StatusBar, ScrollView, TextInput, Platform, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Image, StatusBar, ScrollView, TextInput, Platform, KeyboardAvoidingView, ActivityIndicator, SafeAreaView } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -13,8 +13,11 @@ import { toast } from 'sonner';
 export default function LogsScreen() {
   const router = useRouter();
   const { projects, updateProject } = useProjects();
-  const { user } = useUser();
+  const { user, logout } = useUser();
   const { logs, addLog, updateLog, uploadPhoto } = useLogs();
+
+  // Side Menu State
+  const [menuVisible, setMenuVisible] = useState(false);
 
   // Modal States
   const [isAddModalVisible, setAddModalVisible] = useState(false);
@@ -441,8 +444,18 @@ export default function LogsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F5F7FA' }}>
-      <Stack.Screen options={{ title: '施工紀錄', headerShown: true, headerStyle: { backgroundColor: '#002147' }, headerTintColor: '#fff' }} />
-      <StatusBar barStyle="light-content" />
+      <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle="light-content" backgroundColor="#002147" />
+
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.menuBtn}>
+            <Ionicons name="menu" size={28} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>施工紀錄</Text>
+          <View style={{ width: 28 }} />
+        </View>
+      </SafeAreaView>
 
       <FlatList
         data={visibleLogs}
@@ -758,9 +771,45 @@ export default function LogsScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Side Menu */}
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <View style={styles.menuOverlay}>
+          <View style={styles.sideMenu}>
+            <SafeAreaView style={{ flex: 1, padding: 20 }}>
+              <View style={styles.menuHeader}>
+                <Text style={styles.menuTitle}>功能選單</Text>
+                <TouchableOpacity onPress={() => setMenuVisible(false)}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
+              </View>
+              <View style={{ flex: 1 }}>
+                <MenuItem icon="home" label="首頁" onPress={() => { setMenuVisible(false); router.push('/dashboard'); }} />
+                <MenuItem icon="folder-open" label="專案列表" onPress={() => { setMenuVisible(false); router.push('/projects/'); }} />
+                <MenuItem icon="clipboard" label="施工紀錄" isActive={true} onPress={() => setMenuVisible(false)} />
+                {(user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw') && (
+                  <MenuItem icon="people" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
+                )}
+                <MenuItem icon="library" label="SOP資料庫" onPress={() => { setMenuVisible(false); router.push('/sop'); }} />
+                <MenuItem icon="person-circle" label="我的檔案" onPress={() => { setMenuVisible(false); router.push('/profile'); }} />
+              </View>
+              <View style={{ paddingBottom: 20 }}>
+                <MenuItem icon="log-out-outline" label="登出系統" isLogout onPress={() => { setMenuVisible(false); logout(); router.replace('/'); }} />
+              </View>
+            </SafeAreaView>
+          </View>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} />
+        </View>
+      </Modal>
+
     </View>
   );
 }
+
+const MenuItem = ({ icon, label, onPress, isLogout = false, isActive = false }: any) => (
+  <TouchableOpacity style={[styles.menuItem, isActive && styles.menuItemActive]} onPress={onPress}>
+    <Ionicons name={icon} size={24} color={isLogout ? '#FF6B6B' : (isActive ? '#C69C6D' : '#fff')} />
+    <Text style={[styles.menuItemText, isLogout && { color: '#FF6B6B' }, isActive && { color: '#C69C6D' }]}>{label}</Text>
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 15, padding: 15, elevation: 3, borderWidth: 1, borderColor: '#eee', position: 'relative', overflow: 'hidden' },
@@ -801,6 +850,21 @@ const styles = StyleSheet.create({
   actionText: { fontWeight: 'bold', fontSize: 14, color: '#333' },
 
   fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#C69C6D', justifyContent: 'center', alignItems: 'center', elevation: 5 },
+
+  // Header
+  headerSafeArea: { backgroundColor: '#002147', paddingTop: Platform.OS === 'android' ? 25 : 0 },
+  headerContent: { height: 60, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, justifyContent: 'space-between' },
+  headerTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  menuBtn: { padding: 5 },
+
+  // Side Menu
+  menuOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)' },
+  sideMenu: { width: '80%', maxWidth: 300, backgroundColor: '#002147', height: '100%' },
+  menuHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40, marginTop: 10 },
+  menuTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  menuItemActive: { borderBottomColor: '#C69C6D' },
+  menuItemText: { color: '#fff', fontSize: 18, marginLeft: 15, fontWeight: '500' },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },

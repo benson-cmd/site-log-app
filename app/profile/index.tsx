@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Alert, Modal, TextInput, Platform, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Alert, Modal, TextInput, Platform, KeyboardAvoidingView, ActivityIndicator, StatusBar } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -9,8 +9,11 @@ import { updateEmail } from 'firebase/auth';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, isLoading: isUserLoading } = useUser();
+  const { user, isLoading: isUserLoading, logout } = useUser();
   const { getPersonnelByEmail, updatePersonnel, personnelList, loading: isPersonnelLoading } = usePersonnel();
+
+  // Side Menu State
+  const [menuVisible, setMenuVisible] = useState(false);
 
   const [profile, setProfile] = useState<Personnel | null>(null);
 
@@ -225,14 +228,16 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle="light-content" backgroundColor="#002147" />
+
       <View style={styles.headerArea}>
         <SafeAreaView>
           <View style={styles.navHeader}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={24} color="#fff" />
+            <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.menuBtn}>
+              <Ionicons name="menu" size={28} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>我的檔案</Text>
-            <View style={{ width: 24 }} />
+            <View style={{ width: 28 }} />
           </View>
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
@@ -500,9 +505,44 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Side Menu */}
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <View style={styles.menuOverlay}>
+          <View style={styles.sideMenu}>
+            <SafeAreaView style={{ flex: 1, padding: 20 }}>
+              <View style={styles.menuHeader}>
+                <Text style={styles.menuTitle}>功能選單</Text>
+                <TouchableOpacity onPress={() => setMenuVisible(false)}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
+              </View>
+              <View style={{ flex: 1 }}>
+                <MenuItem icon="home" label="首頁" onPress={() => { setMenuVisible(false); router.push('/dashboard'); }} />
+                <MenuItem icon="folder-open" label="專案列表" onPress={() => { setMenuVisible(false); router.push('/projects/'); }} />
+                <MenuItem icon="clipboard" label="施工紀錄" onPress={() => { setMenuVisible(false); router.push('/logs'); }} />
+                {(user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw') && (
+                  <MenuItem icon="people" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
+                )}
+                <MenuItem icon="library" label="SOP資料庫" onPress={() => { setMenuVisible(false); router.push('/sop'); }} />
+                <MenuItem icon="person-circle" label="我的檔案" isActive={true} onPress={() => setMenuVisible(false)} />
+              </View>
+              <View style={{ paddingBottom: 20 }}>
+                <MenuItem icon="log-out-outline" label="登出系統" isLogout onPress={() => { setMenuVisible(false); logout(); router.replace('/'); }} />
+              </View>
+            </SafeAreaView>
+          </View>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} />
+        </View>
+      </Modal>
+
     </View>
   );
 }
+
+const MenuItem = ({ icon, label, onPress, isLogout = false, isActive = false }: any) => (
+  <TouchableOpacity style={[styles.menuItem, isActive && styles.menuItemActive]} onPress={onPress}>
+    <Ionicons name={icon} size={24} color={isLogout ? '#FF6B6B' : (isActive ? '#C69C6D' : '#fff')} />
+    <Text style={[styles.menuItemText, isLogout && { color: '#FF6B6B' }, isActive && { color: '#C69C6D' }]}>{label}</Text>
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -823,5 +863,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
-  }
+  },
+
+  // Header
+  menuBtn: { padding: 5 },
+
+  // Side Menu
+  menuOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)' },
+  sideMenu: { width: '80%', maxWidth: 300, backgroundColor: '#002147', height: '100%' },
+  menuHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40, marginTop: 10 },
+  menuTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  menuItemActive: { borderBottomColor: '#C69C6D' },
+  menuItemText: { color: '#fff', fontSize: 18, marginLeft: 15, fontWeight: '500' },
 });
