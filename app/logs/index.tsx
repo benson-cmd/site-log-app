@@ -104,19 +104,19 @@ export default function LogsScreen() {
   }, [newLog.date, newLog.project, projects]);
 
   const onSubmit = async () => {
-    // [絕對防呆] 1. 檢查專案名稱 (必填)
+    // [網頁相容性修復] 1. 檢查專案 (嚴格檢查 undefined 或 null)
     if (!newLog.project) {
-      Alert.alert('錯誤：請選擇專案名稱！');
-      return; // 直接中斷
+      alert('⚠️ 錯誤：請務必選擇「專案名稱」！');
+      return; // 強制中斷
     }
-    // [絕對防呆] 2. 檢查施工項目 (必填，且不能只打空白鍵)
-    if (!newLog.content || newLog.content.trim() === '') {
-      Alert.alert('錯誤：請填寫今日施工項目！');
-      return; // 直接中斷
+    // [網頁相容性修復] 2. 檢查內容 (過濾掉只打空白鍵的情況)
+    if (!newLog.content || newLog.content.trim().length === 0) {
+      alert('⚠️ 錯誤：請填寫「今日施工項目」！');
+      return; // 強制中斷
     }
 
     if (!newLog.date || !newLog.weather) {
-      Alert.alert('錯誤', '請填寫完整日期與天氣！');
+      alert('⚠️ 錯誤：請填寫完整日期與天氣！');
       return;
     }
 
