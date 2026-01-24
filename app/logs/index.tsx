@@ -203,12 +203,9 @@ export default function LogsScreen() {
       setAddModalVisible(false);
       resetForm();
 
-      // 確保畫面即時重整 (Web 需求)
-      if (Platform.OS === 'web') {
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      }
+      setNewLog(prev => ({ ...prev, photos: [] }));
+      setAddModalVisible(false);
+      resetForm();
 
     } catch (error: any) {
       console.error('[DEBUG] 提交過程崩潰:', error);
@@ -221,43 +218,37 @@ export default function LogsScreen() {
   // 狀態更新處理器
   const handleStatusUpdate = async (id: string, newStatus: string) => {
     try {
-      alert(`準備將狀態更新為: ${newStatus}`);
       await updateLog(id, { status: newStatus as any });
-      alert('狀態更新成功！');
-      if (Platform.OS === 'web') {
-        window.location.reload();
-      }
+      Alert.alert('儲存成功', `日誌已改為：${newStatus === 'approved' ? '已核准' : '已退回'}`);
     } catch (e: any) {
-      alert('更新失敗: ' + e.message);
+      Alert.alert('錯誤', '更新失敗: ' + e.message);
     }
   };
 
   // Approval Handlers
   const handleApprove = (id: string) => {
-    alert('正在核准 ID: ' + id);
     if (Platform.OS === 'web') {
-      if (window.confirm('確定核准此施工日誌？')) {
+      if (window.confirm('確定要核准此施工日誌嗎？')) {
         handleStatusUpdate(id, 'approved');
       }
       return;
     }
 
-    Alert.alert('核准確認', '確定核准此施工日誌？', [
+    Alert.alert('核准確認', '確定要核准此施工日誌嗎？', [
       { text: '取消', style: 'cancel' },
       { text: '確認核准', onPress: () => handleStatusUpdate(id, 'approved') }
     ]);
   };
 
   const handleReturn = (id: string) => {
-    alert('正在退回 ID: ' + id);
     if (Platform.OS === 'web') {
-      if (window.confirm('確定退回此日誌？')) {
+      if (window.confirm('確定要退回此日誌？')) {
         handleStatusUpdate(id, 'rejected');
       }
       return;
     }
 
-    Alert.alert('退回確認', '確定退回此日誌？', [
+    Alert.alert('退回確認', '確定要退回此施工日誌嗎？', [
       { text: '取消', style: 'cancel' },
       { text: '確認退回', style: 'destructive', onPress: () => handleStatusUpdate(id, 'rejected') }
     ]);
