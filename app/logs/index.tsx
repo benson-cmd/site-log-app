@@ -104,8 +104,14 @@ export default function LogsScreen() {
   }, [newLog.date, newLog.project, projects]);
 
   const onSubmit = async () => {
-    if (!newLog.project || !newLog.content || !newLog.date || !newLog.weather) {
-      Alert.alert('錯誤', '請填寫完整資訊 (專案、日期、天氣、內容)');
+    // [手術級優化] 強制表單驗證：內容不可為空
+    if (!newLog.content || !newLog.content.trim()) {
+      Alert.alert('提示', '請填寫施工內容！');
+      return;
+    }
+
+    if (!newLog.project || !newLog.date || !newLog.weather) {
+      Alert.alert('錯誤', '請填寫完整資訊 (專案、日期、天氣)');
       return;
     }
 
@@ -180,7 +186,7 @@ export default function LogsScreen() {
           date: submissionDate,
           photos: uploadedUrls,
           reporterId: newLog.reporterId || user?.uid, // 確保編輯時保留或更新 ID
-          status: 'pending_review' // [手術級優化] 退回後重新提交，狀態變回待審核
+          status: (newLog.status === 'rejected' || newLog.status === 'pending_review') ? 'pending_review' : newLog.status // [手術級優化] 退回件重新提交，強制變回待審核
         };
         const cleanUpdateData = JSON.parse(JSON.stringify(updateData));
         await updateLog(editingId, cleanUpdateData);
@@ -219,9 +225,6 @@ export default function LogsScreen() {
       setAddModalVisible(false);
       resetForm();
 
-      setNewLog(prev => ({ ...prev, photos: [] }));
-      setAddModalVisible(false);
-      resetForm();
 
     } catch (error: any) {
       console.error('[DEBUG] 提交過程崩潰:', error);
@@ -723,7 +726,11 @@ export default function LogsScreen() {
                   </Text>
                 </View>
               ) : (
-                <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更 & 同步' : '提交日報表 & 同步'}</Text>
+                <Text style={styles.submitBtnText}>
+                  {isEditMode
+                    ? (newLog.status === 'rejected' ? '重新提交審核' : '儲存變更 & 同步')
+                    : '提交日報表 & 同步'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
