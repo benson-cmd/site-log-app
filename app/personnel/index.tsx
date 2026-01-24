@@ -113,9 +113,14 @@ export default function PersonnelScreen() {
   };
 
   const handleSubmit = async () => {
-    // [手術級優化] 只保留姓名與 Email 為必填
+    // [手術級優化] 姓名、Email 為必填；生日因涉及預設密碼邏輯亦改回必填
     if (!formData.name || !formData.email) {
       toast.error('⚠️ 姓名與 Email 為必填欄位！');
+      return;
+    }
+
+    if (!formData.birthDate) {
+      toast.error('⚠️ 生日為必填欄位（預設密碼依據），請務必輸入。');
       return;
     }
 
@@ -281,12 +286,19 @@ export default function PersonnelScreen() {
           <Ionicons name="call" size={14} color="#666" style={{ marginRight: 5 }} />
           <Text style={styles.contactText}>{item.phone}</Text>
         </View>
-        {item.initialPassword && (
+        {item.password && item.password !== item.initialPassword ? (
+          <View style={[styles.pwdRow, styles.pwdRowModified]}>
+            <Text style={[styles.pwdLabel, styles.pwdLabelModified]}>密碼：</Text>
+            <Text style={[styles.pwdValue, styles.pwdLabelModified]}>
+              {item.password.length > 20 ? '已自行變更' : item.password}
+            </Text>
+          </View>
+        ) : item.initialPassword ? (
           <View style={styles.pwdRow}>
             <Text style={styles.pwdLabel}>初始密碼：</Text>
             <Text style={styles.pwdValue}>{item.initialPassword}</Text>
           </View>
-        )}
+        ) : null}
       </View>
     );
   };
@@ -393,7 +405,7 @@ export default function PersonnelScreen() {
               {/* 生日優先，到職日隨後 */}
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 5 }}>
-                  <Text style={styles.label}>生日</Text>
+                  <Text style={styles.label}>生日 *</Text>
                   {renderDateInput('birth', formData.birthDate || '', '生日')}
                 </View>
                 <View style={{ flex: 1, marginLeft: 5 }}>
@@ -542,7 +554,9 @@ const styles = StyleSheet.create({
   contactRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
   contactText: { color: '#555', fontSize: 13 },
   pwdRow: { marginTop: 10, padding: 8, backgroundColor: '#E3F2FD', borderRadius: 6, flexDirection: 'row' },
+  pwdRowModified: { backgroundColor: '#FFF3E0' },
   pwdLabel: { fontSize: 12, color: '#002147', fontWeight: 'bold' },
+  pwdLabelModified: { color: '#E65100' },
   pwdValue: { fontSize: 12, color: '#002147' },
 
   fab: { position: 'absolute', right: 20, bottom: 30, width: 60, height: 60, borderRadius: 30, backgroundColor: '#C69C6D', justifyContent: 'center', alignItems: 'center', elevation: 5 },

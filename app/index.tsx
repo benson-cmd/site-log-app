@@ -78,8 +78,9 @@ export default function LoginScreen() {
 
   return (
     <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1541888941259-7907ff14e94b?q=80&w=2070&auto=format&fit=crop' }}
+      source={{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2670&auto=format&fit=crop' }}
       style={styles.backgroundImage}
+      resizeMode="cover"
     >
       <View style={styles.overlay}>
         <KeyboardAvoidingView
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   scrollContent: {
     flexGrow: 1,
