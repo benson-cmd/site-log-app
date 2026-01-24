@@ -104,14 +104,19 @@ export default function LogsScreen() {
   }, [newLog.date, newLog.project, projects]);
 
   const onSubmit = async () => {
-    // [手術級優化] 強制表單驗證：內容不可為空
-    if (!newLog.content || !newLog.content.trim()) {
-      Alert.alert('提示', '請填寫今日施工項目！');
-      return;
+    // [絕對防呆] 1. 檢查專案名稱 (必填)
+    if (!newLog.project) {
+      Alert.alert('錯誤：請選擇專案名稱！');
+      return; // 直接中斷
+    }
+    // [絕對防呆] 2. 檢查施工項目 (必填，且不能只打空白鍵)
+    if (!newLog.content || newLog.content.trim() === '') {
+      Alert.alert('錯誤：請填寫今日施工項目！');
+      return; // 直接中斷
     }
 
-    if (!newLog.project || !newLog.date || !newLog.weather) {
-      Alert.alert('錯誤', '請填寫完整資訊 (專案、日期、天氣)');
+    if (!newLog.date || !newLog.weather) {
+      Alert.alert('錯誤', '請填寫完整日期與天氣！');
       return;
     }
 
