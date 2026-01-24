@@ -119,6 +119,12 @@ export default function PersonnelScreen() {
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      toast.error('⚠️ 帳號格式錯誤，請輸入有效的 Email 地址。');
+      return;
+    }
+
     if (!formData.birthDate) {
       toast.error('⚠️ 生日為必填欄位（預設密碼依據），請務必輸入。');
       return;
@@ -405,7 +411,7 @@ export default function PersonnelScreen() {
                 </View>
               </View>
 
-              <Text style={styles.label}>帳號與 Email (綁定) *</Text>
+              <Text style={styles.label}>帳號( Email 綁定) *</Text>
               <TextInput style={styles.input} placeholder="Email" value={formData.email} onChangeText={t => setFormData({ ...formData, email: t })} keyboardType="email-address" autoCapitalize="none" />
 
               <Text style={styles.label}>電話</Text>
