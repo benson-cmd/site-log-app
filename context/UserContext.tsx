@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { db } from '../src/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -23,7 +23,28 @@ const UserContext = createContext<UserContextType | null>(null);
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 1. 初始化時檢查 LocalStorage
+  useEffect(() => {
+    const initializeUser = async () => {
+      if (typeof window !== 'undefined') {
+        const storedUser = localStorage.getItem('dwcc_user_info');
+        if (storedUser) {
+          try {
+            setUser(JSON.parse(storedUser));
+          } catch (e) {
+            console.error("Failed to parse user info", e);
+            localStorage.removeItem('dwcc_user_info');
+          }
+        }
+      }
+      // 重點：檢查完畢後，一定要告訴系統「讀取結束」
+      setIsLoading(false);
+    };
+
+    initializeUser();
+  }, []);
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     try {
@@ -31,14 +52,16 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
       // 1. Hardcoded Backup Account
       if (email === 'wu@dwcc.com.tw' && pass === '0720117') {
-        setUser({
+        const adminUser: User = { // 定義物件
           email: 'wu@dwcc.com.tw',
           name: '吳資彬', // Backup Name
           role: 'admin',
-          title: '總經理',
+          title: '副總',
           department: '總經理室',
           uid: 'admin_backup'
-        });
+        };
+        setUser(adminUser);
+        localStorage.setItem('dwcc_user_info', JSON.stringify(adminUser));
         return true;
       }
 
@@ -64,14 +87,16 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (validPwd) {
-        setUser({
+        const loggedInUser: User = {
           email: userData.email,
           name: userData.name,
           role: userData.role || 'user',
           title: userData.title || '員工',
           department: userData.department,
           uid: docSnapshot.id
-        });
+        };
+        setUser(loggedInUser);
+        localStorage.setItem('dwcc_user_info', JSON.stringify(loggedInUser));
         return true;
       }
 
@@ -86,6 +111,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('dwcc_user_info');
   };
 
   return (
