@@ -346,6 +346,7 @@ export default function PersonnelScreen() {
       <Stack.Screen
         options={{
           title: '人員管理',
+          headerShown: true,
           headerLeft: () => (
             <TouchableOpacity
               onPress={() => setSidebarVisible(true)}

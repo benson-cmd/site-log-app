@@ -5,6 +5,7 @@ import { useState, createElement } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
 import { WebView } from 'react-native-webview';
 import { useUser } from '../../context/UserContext';
+import Sidebar from '../../components/Sidebar';
 
 // SOP Data Interface
 interface SOPItem {
@@ -23,7 +24,7 @@ export default function SOPScreen() {
   const isSuperAdmin = user?.email === 'wu@dwcc.com.tw';
 
   // Side Menu State
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [isSidebarVisible, setSidebarVisible] = useState(false);
 
   const [sops, setSops] = useState<SOPItem[]>([
     {
@@ -104,18 +105,24 @@ export default function SOPScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F5F7FA' }}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: 'SOP 資料庫',
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => setSidebarVisible(true)}
+              style={{ marginLeft: 0, marginRight: 15 }}
+            >
+              <Ionicons name="menu" size={28} color="#fff" />
+            </TouchableOpacity>
+          ),
+          headerStyle: { backgroundColor: '#002147' },
+          headerTintColor: '#fff',
+          headerTitleStyle: { fontWeight: 'bold' },
+        }}
+      />
       <StatusBar barStyle="light-content" backgroundColor="#002147" />
-
-      <SafeAreaView style={styles.headerSafeArea}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.menuBtn}>
-            <Ionicons name="menu" size={28} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>SOP 資料庫</Text>
-          <View style={{ width: 28 }} />
-        </View>
-      </SafeAreaView>
 
       <FlatList
         data={sops}
@@ -216,43 +223,17 @@ export default function SOPScreen() {
       </Modal>
 
       {/* Side Menu */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-        <View style={styles.menuOverlay}>
-          <View style={styles.sideMenu}>
-            <SafeAreaView style={{ flex: 1, padding: 20 }}>
-              <View style={styles.menuHeader}>
-                <Text style={styles.menuTitle}>功能選單</Text>
-                <TouchableOpacity onPress={() => setMenuVisible(false)}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
-              </View>
-              <View style={{ flex: 1 }}>
-                <MenuItem icon="home" label="首頁" onPress={() => { setMenuVisible(false); router.push('/dashboard'); }} />
-                <MenuItem icon="folder-open" label="專案列表" onPress={() => { setMenuVisible(false); router.push('/projects/'); }} />
-                <MenuItem icon="clipboard" label="施工紀錄" onPress={() => { setMenuVisible(false); router.push('/logs'); }} />
-                {(user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw') && (
-                  <MenuItem icon="people" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
-                )}
-                <MenuItem icon="library" label="SOP資料庫" isActive={true} onPress={() => setMenuVisible(false)} />
-                <MenuItem icon="person-circle" label="我的檔案" onPress={() => { setMenuVisible(false); router.push('/profile'); }} />
-              </View>
-              <View style={{ paddingBottom: 20 }}>
-                <MenuItem icon="log-out-outline" label="登出系統" isLogout onPress={() => { setMenuVisible(false); logout(); router.replace('/'); }} />
-              </View>
-            </SafeAreaView>
-          </View>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} />
-        </View>
-      </Modal>
+      {/* Side Menu */}
+      <Sidebar
+        isVisible={isSidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+      />
 
     </View >
   );
 }
 
-const MenuItem = ({ icon, label, onPress, isLogout = false, isActive = false }: any) => (
-  <TouchableOpacity style={[styles.menuItem, isActive && styles.menuItemActive]} onPress={onPress}>
-    <Ionicons name={icon} size={24} color={isLogout ? '#FF6B6B' : (isActive ? '#C69C6D' : '#fff')} />
-    <Text style={[styles.menuItemText, isLogout && { color: '#FF6B6B' }, isActive && { color: '#C69C6D' }]}>{label}</Text>
-  </TouchableOpacity>
-);
+
 
 const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', marginBottom: 15, padding: 15, borderRadius: 12, elevation: 2, borderWidth: 1, borderColor: '#eee' },
