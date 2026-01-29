@@ -138,43 +138,67 @@ export default function ProjectDetailScreen() {
       setEditProject(JSON.parse(JSON.stringify(project)));
     }
     if (projectSchedule.length > 0) {
-      setPlannedData(projectSchedule.map(s => s.progress));
-      setChartLabels(projectSchedule.map(s => s.date.slice(5)));
-    }
-  }, [project, isEditModalVisible, projectSchedule]);
+      let pData = projectSchedule.map(s => s.progress);
+      let pLabels = projectSchedule.map(s => s.date.slice(5)); // MM-DD
 
-  // Calc Actual Data based on projectSchedule
+      // ⚠️ Use Planned Completion Date from memo if available, ensuring the last label is correct
+      if (plannedCompletionDate && plannedCompletionDate !== '-') {
+        const endDateLabel = plannedCompletionDate.slice(5);
+        // Ensure the last label matches this, even if schedule data has it (it should)
+        if (pLabels.length > 0) {
+          pLabels[pLabels.length - 1] = endDateLabel;
+        }
+      }
+
+      setPlannedData(pData);
+      setChartLabels(pLabels);
+    }
+  }, [project, isEditModalVisible, projectSchedule, plannedCompletionDate]);
+
+  // Calc Actual Data based on Chart Labels (dates)
   useEffect(() => {
-    if (projectSchedule.length > 0) {
+    if (projectLogs.length > 0 && chartLabels.length > 0) {
       const today = new Date();
-      // Remove time part for accurate date comparison
       today.setHours(0, 0, 0, 0);
 
-      const newActualData = projectSchedule.map(point => {
-        const pointDate = new Date(point.date);
-        pointDate.setHours(0, 0, 0, 0);
+      const newActualData = chartLabels.map((label, index) => {
+        // Resolve Date for this label
+        // This is tricky because label is just "MM-DD". We need "YYYY-MM-DD".
+        // We can fallback to projectSchedule[index].date because they share indices.
+        // Or we can try to construct it.
+        // Best is to use projectSchedule[index].date
 
-        // Future: Return null
-        if (pointDate > today) {
-          return null;
+        let dateStr = '';
+        if (projectSchedule[index]) {
+          dateStr = projectSchedule[index].date;
+        } else {
+          // Fallback if mismatch
+          dateStr = new Date().toISOString().split('T')[0];
         }
 
-        // Find latest log before or on this point
-        // projectLogs is sorted Newest first
-        // We find the first log where log.date <= point.date
-        const latestLog = projectLogs.find(l => l.date <= point.date);
+        const pointDate = new Date(dateStr);
+        pointDate.setHours(0, 0, 0, 0);
 
-        if (latestLog) {
-          // Access 'actualProgress' or fallback
-          return parseFloat((latestLog as any).actualProgress || (latestLog as any).progress || 0);
+        // Future -> null
+        if (pointDate > today) return null;
+
+        // Find latest log <= pointDate
+        // sortedLogs is new -> old.
+        // We want the LATEST log that is on or BEFORE pointDate.
+        // filter(l <= point).shift() ? wait. 
+        // sort is (b.date - a.date) => Descending.
+        // so find() gives the newest log.
+        const validLog = projectLogs.find(l => l.date <= dateStr);
+
+        if (validLog) {
+          return parseFloat((validLog as any).actualProgress || (validLog as any).progress || 0);
         } else {
-          // specific logic: if no log found before this date, it's 0 (start of project)
           return 0;
         }
       });
       setActualData(newActualData);
     }
-  }, [projectSchedule, projectLogs]);
+  }, [projectLogs, chartLabels, projectSchedule]);
 
   const handleImportPlannedCSV = async () => {
     try {

@@ -10,6 +10,8 @@ import { useUser } from '../../context/UserContext';
 import { useLogs, LogEntry, MachineItem, LaborItem } from '../../context/LogContext';
 import { toast } from 'sonner';
 
+import DateTimePicker from '@react-native-community/datetimepicker';
+
 export default function LogsScreen() {
   const router = useRouter();
   const { projects, updateProject } = useProjects();
@@ -24,6 +26,7 @@ export default function LogsScreen() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false); // Date Picker State
 
   const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
     project: '', date: '', weather: '晴', content: '', machines: [], labor: [], reporter: '', photos: [], todayProgress: ''
@@ -554,7 +557,30 @@ export default function LogsScreen() {
                   />
                 </View>
               ) : (
-                <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={newLog.date} onChangeText={t => setNewLog({ ...newLog, date: t })} />
+                <View>
+                  <TouchableOpacity
+                    style={styles.input}
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <Text style={{ color: newLog.date ? '#000' : '#999', paddingTop: 3 }}>
+                      {newLog.date || '請選擇日期'}
+                    </Text>
+                  </TouchableOpacity>
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={newLog.date ? new Date(newLog.date) : new Date()}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(event, selectedDate) => {
+                        setShowDatePicker(false);
+                        if (selectedDate) {
+                          const formattedDate = selectedDate.toISOString().split('T')[0];
+                          setNewLog({ ...newLog, date: formattedDate });
+                        }
+                      }}
+                    />
+                  )}
+                </View>
               )}
 
               <Text style={styles.inputLabel}>天氣</Text>
