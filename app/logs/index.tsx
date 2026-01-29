@@ -582,22 +582,23 @@ export default function LogsScreen() {
               </View>
 
               <Text style={styles.inputLabel}>日期</Text>
-              <View style={[styles.input, { padding: 0, justifyContent: 'center', overflow: 'hidden' }]}>
+              <View style={[styles.input, { padding: 0, justifyContent: 'center', overflow: 'hidden', height: 50 }]}>
                 {Platform.OS === 'web' ? (
                   <input
                     type="date"
-                    value={newLog.date}
+                    value={newLog.date ? newLog.date.replace(/\//g, '-') : ''}
                     onChange={(e: any) => setNewLog({ ...newLog, date: e.target.value })}
                     style={{
                       border: 'none',
                       width: '100%',
                       height: '100%',
                       fontSize: '16px',
-                      padding: '10px',
+                      padding: '0 10px',
                       backgroundColor: 'transparent',
                       outline: 'none',
                       color: '#333',
-                      fontFamily: 'inherit'
+                      fontFamily: 'inherit',
+                      boxSizing: 'border-box'
                     }}
                   />
                 ) : (

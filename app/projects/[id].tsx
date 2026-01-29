@@ -149,91 +149,78 @@ export default function ProjectDetailScreen() {
     setEditModalVisible(true);
   };
 
-  // S-Curve Logic: 6-Step Fixed Method (User Requested)
+  // S-Curve Logic: String-Based Date Comparison (User Requested)
   useEffect(() => {
-    if (project && project.startDate) {
+    if (project && project.startDate && plannedCompletionDate && plannedCompletionDate !== '-') {
       const today = new Date();
-      // Use actualCompletionDate if available, otherwise plannedCompletionDate
-      const startStr = project.startDate;
-      const endStr = project.actualCompletionDate || plannedCompletionDate;
+      const startDate = new Date(project.startDate);
+      const endDate = new Date(plannedCompletionDate);
 
-      if (!startStr || startStr === '-' || !endStr || endStr === '-') {
-        // If dates are not valid, reset chart data to avoid errors
-        setChartLabels(['Start', 'End']);
-        setPlannedData([0, 0]);
-        setActualData([0, null]);
-        return;
-      }
-
-      const startDate = new Date(startStr);
-      const endDate = new Date(endStr);
-
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        // If dates are invalid, reset chart data to avoid errors
-        setChartLabels(['Start', 'End']);
-        setPlannedData([0, 0]);
-        setActualData([0, null]);
-        return;
-      }
-
-      // 1. Generate X-axis Labels (6 steps from Start to End)
-      const points: Date[] = [];
+      // 1. 生成 X 軸標籤 (Labels) - 強制包含起點與終點
+      const points = [];
       const totalTime = endDate.getTime() - startDate.getTime();
-      const steps = 6;
+      const steps = 5; // 改為 5 等分，讓頭尾更明確
 
       for (let i = 0; i <= steps; i++) {
-        const time = startDate.getTime() + (totalTime * (i / steps));
-        points.push(new Date(time));
+        if (i === steps) {
+          points.push(endDate); // 強制最後一點是完工日
+        } else {
+          const time = startDate.getTime() + (totalTime * (i / steps));
+          points.push(new Date(time));
+        }
       }
 
-      // Convert to MM/DD (使用斜線，強制最後一點顯示專案結束日)
-      const newLabels = points.map((d, index) => {
-        const targetDate = index === steps ? endDate : d;
-        const m = String(targetDate.getMonth() + 1).padStart(2, '0');
-        const day = String(targetDate.getDate()).padStart(2, '0');
+      // 格式化 X 軸顯示 (MM/DD)
+      const newLabels = points.map(d => {
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
         return `${m}/${day}`;
       });
       setChartLabels(newLabels);
 
-      // 2. Calculate Actual Data
+      // 2. 計算實際進度 (Actual Data) - 修正比對邏輯
       if (projectLogs && projectLogs.length > 0) {
-        // Sort Logs (Old -> New)
+        // 輔助函式：轉成 YYYY-MM-DD 字串以進行安全比對
+        const toDateStr = (dateObj: Date | string) => {
+          const d = new Date(dateObj);
+          return d.toISOString().split('T')[0];
+        };
+
+        const todayStr = toDateStr(today);
+
+        // 先排序 Logs (由舊到新)
         const sortedLogs = [...projectLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        const newActualData = points.map((pointDate, index) => {
-          // 校正最後一點的時間為結束日
-          const compareDate = index === steps ? new Date(endDate) : new Date(pointDate);
-          const todayDate = new Date(today);
+        const newActualData = points.map(pointDate => {
+          const pointStr = toDateStr(pointDate);
 
-          // A. 未來時間不畫線（normalize 到 00:00:00）
-          compareDate.setHours(0, 0, 0, 0);
-          todayDate.setHours(0, 0, 0, 0);
-
-          if (compareDate.getTime() > todayDate.getTime()) {
+          // A. 如果該點在「明天以後」，就不畫線 (return null)
+          if (pointStr > todayStr) {
             return null;
           }
 
-          // B. 找出該日期(含)以前的最新紀錄
-          const validLogs = sortedLogs.filter(log => {
-            const logDate = new Date(log.date);
-            logDate.setHours(0, 0, 0, 0);
-            return logDate.getTime() <= compareDate.getTime();
-          });
+          // B. 找出「日期 <= 圖表時間點」的最新一筆 Log
+          // 使用字串比對，確保 2026-01-29 會被算在 2026-01-29 (或之後) 的點內
+          const validLogs = sortedLogs.filter(log => toDateStr(log.date) <= pointStr);
 
           if (validLogs.length > 0) {
+            // 取符合條件的最後一筆
             const lastLog = validLogs[validLogs.length - 1];
             const val = parseFloat((lastLog as any).actualProgress || (lastLog as any).progress || '0');
             return isNaN(val) ? 0 : val;
           } else {
+            // 該時間點前無數據，回傳 0
             return 0;
           }
         });
-        setActualData(newActualData.length > 0 ? newActualData : [0]);
+
+        // 確保數據存在
+        setActualData(newActualData);
       } else {
         setActualData([0]);
       }
 
-      // 3. Calculate Planned Data (Interpolation) to match the 6 steps
+      // 3. Calculate Planned Data (Interpolation) to match the steps
       if (project.scheduleData && project.scheduleData.length > 0) {
         const sortedSchedule = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const newPlannedData = points.map(pointDate => {
@@ -252,7 +239,6 @@ export default function ProjectDetailScreen() {
         const linear = points.map((_, i) => Math.round((i / steps) * 100));
         setPlannedData(linear);
       }
-
     } else {
       // If project is null or invalid, reset chart data
       setChartLabels(['Start', 'End']);
