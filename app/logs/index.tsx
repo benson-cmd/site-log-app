@@ -591,253 +591,267 @@ export default function LogsScreen() {
                     onChangeText={t => setNewLog({ ...newLog, date: t })}
                   />
                 </View>
-              ) : null}
-          </View>
+              ) : (
+                <View>
+                  <TouchableOpacity style={styles.selectBtn} onPress={openNativeDatePicker}>
+                    <Text style={{ color: newLog.date ? '#333' : '#999', fontSize: 16 }}>
+                      {newLog.date || '請選擇日期'}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={20} color="#666" />
+                  </TouchableOpacity>
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={tempDate}
+                      mode="date"
+                      display="default"
+                      onChange={onNativeDateChange}
+                    />
+                  )}
+                </View>
               )}
 
-          <Text style={styles.inputLabel}>天氣</Text>
-          <View style={styles.weatherPicker}>
-            {['晴', '陰', '雨'].map(w => (
-              <TouchableOpacity
-                key={w}
-                style={[styles.weatherOption, newLog.weather === w && styles.weatherOptionActive]}
-                onPress={() => setNewLog({ ...newLog, date: newLog.date || new Date().toISOString().split('T')[0], weather: w })}
-              >
-                <Text style={[styles.weatherOptionText, newLog.weather === w && styles.weatherOptionTextActive]}>{w}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.inputLabel}>施工項目</Text>
-          <TextInput style={[styles.contentInput, { height: 100, textAlignVertical: 'top' }]} placeholder="今日施工項目..." multiline value={newLog.content} onChangeText={t => setNewLog({ ...newLog, content: t })} />
-
-          <Text style={styles.inputLabel}>機具</Text>
-          <View style={styles.machineryListContainer}>
-            {newLog.machines && newLog.machines.length > 0 && newLog.machines.map((item, index) => (
-              <View key={item.id} style={styles.machineryRow}>
-                <View style={styles.machineryInputsRow}>
-                  <TextInput
-                    style={[styles.machineryInput, { flex: 2 }]}
-                    placeholder="機具名稱"
-                    value={item.name}
-                    onChangeText={t => {
-                      const updatedList = [...(newLog.machines || [])];
-                      updatedList[index] = { ...updatedList[index], name: t };
-                      setNewLog({ ...newLog, machines: updatedList });
-                    }}
-                  />
-                  <TextInput
-                    style={[styles.machineryInput, { flex: 1, marginLeft: 5 }]}
-                    placeholder="數量"
-                    keyboardType="number-pad"
-                    value={item.quantity?.toString()}
-                    onChangeText={t => {
-                      const updatedList = [...(newLog.machines || [])];
-                      updatedList[index] = { ...updatedList[index], quantity: parseInt(t) || 0 };
-                      setNewLog({ ...newLog, machines: updatedList });
-                    }}
-                  />
-                </View>
-                <View style={styles.machineryInputsRow}>
-                  <TextInput
-                    style={[styles.machineryInput, { flex: 1 }]}
-                    placeholder="備註 (例如：進場時間)"
-                    value={item.note || ''}
-                    onChangeText={t => {
-                      const updatedList = [...(newLog.machines || [])];
-                      updatedList[index] = { ...updatedList[index], note: t };
-                      setNewLog({ ...newLog, machines: updatedList });
-                    }}
-                  />
+              <Text style={styles.inputLabel}>天氣</Text>
+              <View style={styles.weatherPicker}>
+                {['晴', '陰', '雨'].map(w => (
                   <TouchableOpacity
-                    style={styles.deleteBtn}
-                    onPress={() => {
-                      const updatedList = newLog.machines?.filter((_, i) => i !== index);
-                      setNewLog({ ...newLog, machines: updatedList });
-                    }}
+                    key={w}
+                    style={[styles.weatherOption, newLog.weather === w && styles.weatherOptionActive]}
+                    onPress={() => setNewLog({ ...newLog, date: newLog.date || new Date().toISOString().split('T')[0], weather: w })}
                   >
-                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                    <Text style={[styles.weatherOptionText, newLog.weather === w && styles.weatherOptionTextActive]}>{w}</Text>
                   </TouchableOpacity>
-                </View>
+                ))}
               </View>
-            ))}
-            <TouchableOpacity
-              style={styles.addMachineryBtn}
-              onPress={() => {
-                const newItem: MachineItem = {
-                  id: Math.random().toString(36).substr(2, 9),
-                  name: '',
-                  quantity: 1,
-                  note: ''
-                };
-                setNewLog({ ...newLog, machines: [...(newLog.machines || []), newItem] });
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />
-              <Text style={styles.addMachineryText}>新增機具</Text>
-            </TouchableOpacity>
-          </View>
 
-          <Text style={styles.inputLabel}>人力</Text>
-          <View style={styles.manpowerListContainer}>
-            {newLog.labor && newLog.labor.length > 0 && newLog.labor.map((item, index) => (
-              <View key={item.id} style={styles.manpowerRow}>
-                <View style={styles.manpowerInputsRow}>
-                  <TextInput
-                    style={[styles.manpowerInput, { flex: 2 }]}
-                    placeholder="工種/公司"
-                    value={item.type}
-                    onChangeText={t => {
-                      const updatedList = [...(newLog.labor || [])];
-                      updatedList[index] = { ...updatedList[index], type: t };
-                      setNewLog({ ...newLog, labor: updatedList });
-                    }}
-                  />
-                  <TextInput
-                    style={[styles.manpowerInput, { flex: 1, marginLeft: 5 }]}
-                    placeholder="人數"
-                    keyboardType="number-pad"
-                    value={item.count?.toString()}
-                    onChangeText={t => {
-                      const updatedList = [...(newLog.labor || [])];
-                      updatedList[index] = { ...updatedList[index], count: parseInt(t) || 0 };
-                      setNewLog({ ...newLog, labor: updatedList });
-                    }}
-                  />
-                </View>
-                <View style={styles.manpowerInputsRow}>
-                  <TextInput
-                    style={[styles.manpowerInput, { flex: 1 }]}
-                    placeholder="工作內容 (選填)"
-                    value={item.work || ''}
-                    onChangeText={t => {
-                      const updatedList = [...(newLog.labor || [])];
-                      updatedList[index] = { ...updatedList[index], work: t };
-                      setNewLog({ ...newLog, labor: updatedList });
-                    }}
-                  />
-                  <TouchableOpacity
-                    style={styles.deleteBtn}
-                    onPress={() => {
-                      const updatedList = newLog.labor?.filter((_, i) => i !== index);
-                      setNewLog({ ...newLog, labor: updatedList });
-                    }}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-            <TouchableOpacity
-              style={styles.addManpowerBtn}
-              onPress={() => {
-                const newItem: LaborItem = {
-                  id: Math.random().toString(36).substr(2, 9),
-                  type: '',
-                  count: 1,
-                  work: ''
-                };
-                setNewLog({ ...newLog, labor: [...(newLog.labor || []), newItem] });
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />
-              <Text style={styles.addManpowerText}>新增人力</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={styles.inputLabel}>施工項目</Text>
+              <TextInput style={[styles.contentInput, { height: 100, textAlignVertical: 'top' }]} placeholder="今日施工項目..." multiline value={newLog.content} onChangeText={t => setNewLog({ ...newLog, content: t })} />
 
-          {/* Photo Upload */}
-          <Text style={styles.inputLabel}>施工照片</Text>
-          <View style={styles.photoContainer}>
-            {newLog.photos?.map((uri, idx) => (
-              <View key={idx} style={styles.photoThumbContainer}>
-                <Image source={{ uri }} style={styles.photoThumb} />
-                <TouchableOpacity style={styles.removePhoto} onPress={() => removePhoto(idx)}>
-                  <Ionicons name="close-circle" size={20} color="#FF6B6B" />
+              <Text style={styles.inputLabel}>機具</Text>
+              <View style={styles.machineryListContainer}>
+                {newLog.machines && newLog.machines.length > 0 && newLog.machines.map((item, index) => (
+                  <View key={item.id} style={styles.machineryRow}>
+                    <View style={styles.machineryInputsRow}>
+                      <TextInput
+                        style={[styles.machineryInput, { flex: 2 }]}
+                        placeholder="機具名稱"
+                        value={item.name}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.machines || [])];
+                          updatedList[index] = { ...updatedList[index], name: t };
+                          setNewLog({ ...newLog, machines: updatedList });
+                        }}
+                      />
+                      <TextInput
+                        style={[styles.machineryInput, { flex: 1, marginLeft: 5 }]}
+                        placeholder="數量"
+                        keyboardType="number-pad"
+                        value={item.quantity?.toString()}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.machines || [])];
+                          updatedList[index] = { ...updatedList[index], quantity: parseInt(t) || 0 };
+                          setNewLog({ ...newLog, machines: updatedList });
+                        }}
+                      />
+                    </View>
+                    <View style={styles.machineryInputsRow}>
+                      <TextInput
+                        style={[styles.machineryInput, { flex: 1 }]}
+                        placeholder="備註 (例如：進場時間)"
+                        value={item.note || ''}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.machines || [])];
+                          updatedList[index] = { ...updatedList[index], note: t };
+                          setNewLog({ ...newLog, machines: updatedList });
+                        }}
+                      />
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() => {
+                          const updatedList = newLog.machines?.filter((_, i) => i !== index);
+                          setNewLog({ ...newLog, machines: updatedList });
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={styles.addMachineryBtn}
+                  onPress={() => {
+                    const newItem: MachineItem = {
+                      id: Math.random().toString(36).substr(2, 9),
+                      name: '',
+                      quantity: 1,
+                      note: ''
+                    };
+                    setNewLog({ ...newLog, machines: [...(newLog.machines || []), newItem] });
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />
+                  <Text style={styles.addMachineryText}>新增機具</Text>
                 </TouchableOpacity>
               </View>
-            ))}
-            <TouchableOpacity style={styles.addPhotoBtn} onPress={pickImage}>
-              <Ionicons name="camera" size={30} color="#999" />
-              <Text style={{ color: '#999', fontSize: 12, marginTop: 5 }}>新增照片 (0/20)</Text>
+
+              <Text style={styles.inputLabel}>人力</Text>
+              <View style={styles.manpowerListContainer}>
+                {newLog.labor && newLog.labor.length > 0 && newLog.labor.map((item, index) => (
+                  <View key={item.id} style={styles.manpowerRow}>
+                    <View style={styles.manpowerInputsRow}>
+                      <TextInput
+                        style={[styles.manpowerInput, { flex: 2 }]}
+                        placeholder="工種/公司"
+                        value={item.type}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.labor || [])];
+                          updatedList[index] = { ...updatedList[index], type: t };
+                          setNewLog({ ...newLog, labor: updatedList });
+                        }}
+                      />
+                      <TextInput
+                        style={[styles.manpowerInput, { flex: 1, marginLeft: 5 }]}
+                        placeholder="人數"
+                        keyboardType="number-pad"
+                        value={item.count?.toString()}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.labor || [])];
+                          updatedList[index] = { ...updatedList[index], count: parseInt(t) || 0 };
+                          setNewLog({ ...newLog, labor: updatedList });
+                        }}
+                      />
+                    </View>
+                    <View style={styles.manpowerInputsRow}>
+                      <TextInput
+                        style={[styles.manpowerInput, { flex: 1 }]}
+                        placeholder="工作內容 (選填)"
+                        value={item.work || ''}
+                        onChangeText={t => {
+                          const updatedList = [...(newLog.labor || [])];
+                          updatedList[index] = { ...updatedList[index], work: t };
+                          setNewLog({ ...newLog, labor: updatedList });
+                        }}
+                      />
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() => {
+                          const updatedList = newLog.labor?.filter((_, i) => i !== index);
+                          setNewLog({ ...newLog, labor: updatedList });
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={styles.addManpowerBtn}
+                  onPress={() => {
+                    const newItem: LaborItem = {
+                      id: Math.random().toString(36).substr(2, 9),
+                      type: '',
+                      count: 1,
+                      work: ''
+                    };
+                    setNewLog({ ...newLog, labor: [...(newLog.labor || []), newItem] });
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#C69C6D" />
+                  <Text style={styles.addManpowerText}>新增人力</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Photo Upload */}
+              <Text style={styles.inputLabel}>施工照片</Text>
+              <View style={styles.photoContainer}>
+                {newLog.photos?.map((uri, idx) => (
+                  <View key={idx} style={styles.photoThumbContainer}>
+                    <Image source={{ uri }} style={styles.photoThumb} />
+                    <TouchableOpacity style={styles.removePhoto} onPress={() => removePhoto(idx)}>
+                      <Ionicons name="close-circle" size={20} color="#FF6B6B" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <TouchableOpacity style={styles.addPhotoBtn} onPress={pickImage}>
+                  <Ionicons name="camera" size={30} color="#999" />
+                  <Text style={{ color: '#999', fontSize: 12, marginTop: 5 }}>新增照片 (0/20)</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.inputLabel}>填寫人 (自動帶入)</Text>
+              <TextInput style={[styles.input, { backgroundColor: '#eee' }]} value={newLog.reporter} editable={false} />
+
+              <View style={{ height: 30 }} />
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.submitBtn, isSubmitting && { backgroundColor: '#ccc' }]}
+              onPress={onSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
+                  <Text style={styles.submitBtnText}>
+                    {uploadProgress.total > 0 && uploadProgress.current < uploadProgress.total
+                      ? `照片傳送中 (${uploadProgress.current}/${uploadProgress.total})...`
+                      : '傳送中，請稍候...'}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.submitBtnText}>
+                  {isEditMode
+                    ? (newLog.status === 'rejected' ? '重新提交審核' : '儲存變更 & 同步')
+                    : '提交日報表 & 同步'}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.inputLabel}>填寫人 (自動帶入)</Text>
-          <TextInput style={[styles.input, { backgroundColor: '#eee' }]} value={newLog.reporter} editable={false} />
-
-          <View style={{ height: 30 }} />
-        </ScrollView>
-
-        <TouchableOpacity
-          style={[styles.submitBtn, isSubmitting && { backgroundColor: '#ccc' }]}
-          onPress={onSubmit}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
-              <Text style={styles.submitBtnText}>
-                {uploadProgress.total > 0 && uploadProgress.current < uploadProgress.total
-                  ? `照片傳送中 (${uploadProgress.current}/${uploadProgress.total})...`
-                  : '傳送中，請稍候...'}
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.submitBtnText}>
-              {isEditMode
-                ? (newLog.status === 'rejected' ? '重新提交審核' : '儲存變更 & 同步')
-                : '提交日報表 & 同步'}
-            </Text>
-          )}
-        </TouchableOpacity>
-    </View>
         </KeyboardAvoidingView>
       </Modal>
 
-    {/* 放大預覽 Modal */ }
-    <Modal visible= {!!previewImage
-} transparent animationType= "fade" onRequestClose= {() => setPreviewImage(null)}>
-  <TouchableOpacity
-    style={(extraStyles as any).previewOverlay}
-    activeOpacity={1}
-    onPress={() => setPreviewImage(null)}
-  >
-    <TouchableOpacity activeOpacity={1} style={(extraStyles as any).previewContent}>
-      <Image source={{ uri: previewImage || '' }} style={(extraStyles as any).fullImage} resizeMode="contain" />
-      <TouchableOpacity style={(extraStyles as any).closePreviewBtn} onPress={() => setPreviewImage(null)}>
-        <Ionicons name="close-circle" size={40} color="#fff" />
-      </TouchableOpacity>
-    </TouchableOpacity>
-  </TouchableOpacity>
-    </Modal>
+      {/* 放大預覽 Modal */}
+      <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
+        <TouchableOpacity
+          style={(extraStyles as any).previewOverlay}
+          activeOpacity={1}
+          onPress={() => setPreviewImage(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={(extraStyles as any).previewContent}>
+            <Image source={{ uri: previewImage || '' }} style={(extraStyles as any).fullImage} resizeMode="contain" />
+            <TouchableOpacity style={(extraStyles as any).closePreviewBtn} onPress={() => setPreviewImage(null)}>
+              <Ionicons name="close-circle" size={40} color="#fff" />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
-  {/* Side Menu */ }
-  <Modal visible= {menuVisible} transparent animationType= "fade" onRequestClose= {() => setMenuVisible(false)}>
-    <View style={styles.menuOverlay}>
-      <View style={styles.sideMenu}>
-        <SafeAreaView style={{ flex: 1, padding: 20 }}>
-          <View style={styles.menuHeader}>
-            <Text style={styles.menuTitle}>功能選單</Text>
-            <TouchableOpacity onPress={() => setMenuVisible(false)}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
+      {/* Side Menu */}
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <View style={styles.menuOverlay}>
+          <View style={styles.sideMenu}>
+            <SafeAreaView style={{ flex: 1, padding: 20 }}>
+              <View style={styles.menuHeader}>
+                <Text style={styles.menuTitle}>功能選單</Text>
+                <TouchableOpacity onPress={() => setMenuVisible(false)}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
+              </View>
+              <View style={{ flex: 1 }}>
+                <MenuItem icon="home" label="首頁" onPress={() => { setMenuVisible(false); router.push('/dashboard'); }} />
+                <MenuItem icon="folder-open" label="專案列表" onPress={() => { setMenuVisible(false); router.push('/projects/'); }} />
+                <MenuItem icon="clipboard" label="施工紀錄" isActive={true} onPress={() => setMenuVisible(false)} />
+                {(user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw') && (
+                  <MenuItem icon="people" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
+                )}
+                <MenuItem icon="library" label="SOP資料庫" onPress={() => { setMenuVisible(false); router.push('/sop'); }} />
+                <MenuItem icon="person-circle" label="我的檔案" onPress={() => { setMenuVisible(false); router.push('/profile'); }} />
+              </View>
+              <View style={{ paddingBottom: 20 }}>
+                <MenuItem icon="log-out-outline" label="登出系統" isLogout onPress={() => { setMenuVisible(false); logout(); router.replace('/'); }} />
+              </View>
+            </SafeAreaView>
           </View>
-          <View style={{ flex: 1 }}>
-            <MenuItem icon="home" label="首頁" onPress={() => { setMenuVisible(false); router.push('/dashboard'); }} />
-            <MenuItem icon="folder-open" label="專案列表" onPress={() => { setMenuVisible(false); router.push('/projects/'); }} />
-            <MenuItem icon="clipboard" label="施工紀錄" isActive={true} onPress={() => setMenuVisible(false)} />
-            {(user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw') && (
-              <MenuItem icon="people" label="人員管理" onPress={() => { setMenuVisible(false); router.push('/personnel'); }} />
-            )}
-            <MenuItem icon="library" label="SOP資料庫" onPress={() => { setMenuVisible(false); router.push('/sop'); }} />
-            <MenuItem icon="person-circle" label="我的檔案" onPress={() => { setMenuVisible(false); router.push('/profile'); }} />
-          </View>
-          <View style={{ paddingBottom: 20 }}>
-            <MenuItem icon="log-out-outline" label="登出系統" isLogout onPress={() => { setMenuVisible(false); logout(); router.replace('/'); }} />
-          </View>
-        </SafeAreaView>
-      </View>
-      <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} />
-    </View>
-    </Modal>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} />
+        </View>
+      </Modal>
 
     </View>
   );
