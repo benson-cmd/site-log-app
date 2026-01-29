@@ -791,12 +791,12 @@ export default function LogsScreen() {
           )}
         </TouchableOpacity>
     </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        </KeyboardAvoidingView >
+      </Modal >
 
     {/* 放大預覽 Modal */ }
-    <Modal visible= {!!previewImage
-} transparent animationType= "fade" onRequestClose= {() => setPreviewImage(null)}>
+    < Modal visible = {!!previewImage
+} transparent animationType = "fade" onRequestClose = {() => setPreviewImage(null)}>
   <TouchableOpacity
     style={(extraStyles as any).previewOverlay}
     activeOpacity={1}
@@ -809,10 +809,10 @@ export default function LogsScreen() {
       </TouchableOpacity>
     </TouchableOpacity>
   </TouchableOpacity>
-    </Modal>
+    </Modal >
 
   {/* Side Menu */ }
-  <Modal visible= {menuVisible} transparent animationType= "fade" onRequestClose= {() => setMenuVisible(false)}>
+  < Modal visible = { menuVisible } transparent animationType = "fade" onRequestClose = {() => setMenuVisible(false)}>
     <View style={styles.menuOverlay}>
       <View style={styles.sideMenu}>
         <SafeAreaView style={{ flex: 1, padding: 20 }}>
@@ -837,9 +837,9 @@ export default function LogsScreen() {
       </View>
       <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} />
     </View>
-    </Modal>
+    </Modal >
 
-    </View>
+    </View >
   );
 }
 
