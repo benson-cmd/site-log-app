@@ -133,100 +133,109 @@ export default function ProjectDetailScreen() {
     return data;
   }, [project?.scheduleData, project?.startDate, plannedCompletionDate]);
 
-  // S-Curve Logic: Labels & Actual Data Trend
+  // S-Curve Logic: 6-Step Fixed Method (User Requested)
   useEffect(() => {
-    if (project) {
-      // 1. Prepare Chart Labels
-      // Default to existing schedule labels if available, else Start/End
-      let currentLabels: string[] = [];
-      let currentPlannedData: number[] = [];
+    if (project && project.startDate) {
+      const today = new Date();
+      // Use actualCompletionDate if available, otherwise plannedCompletionDate
+      const startStr = project.startDate;
+      const endStr = project.actualCompletionDate || plannedCompletionDate;
 
-      if (projectSchedule.length > 0) {
-        currentLabels = projectSchedule.map(s => s.date.slice(5));
-        currentPlannedData = projectSchedule.map(s => s.progress);
+      if (!startStr || startStr === '-' || !endStr || endStr === '-') {
+        // If dates are not valid, reset chart data to avoid errors
+        setChartLabels(['Start', 'End']);
+        setPlannedData([0, 0]);
+        setActualData([0, null]);
+        return;
+      }
+
+      const startDate = new Date(startStr);
+      const endDate = new Date(endStr);
+
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        // If dates are invalid, reset chart data to avoid errors
+        setChartLabels(['Start', 'End']);
+        setPlannedData([0, 0]);
+        setActualData([0, null]);
+        return;
+      }
+
+      // 1. Generate X-axis Labels (6 steps from Start to End)
+      const points: Date[] = [];
+      const totalTime = endDate.getTime() - startDate.getTime();
+      const steps = 6;
+
+      for (let i = 0; i <= steps; i++) {
+        const time = startDate.getTime() + (totalTime * (i / steps));
+        points.push(new Date(time));
+      }
+
+      // Convert to MM-DD
+      const newLabels = points.map(d => {
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${m}-${day}`;
+      });
+      setChartLabels(newLabels);
+
+      // 2. Calculate Actual Data
+      if (projectLogs && projectLogs.length > 0) {
+        // Sort Logs (Old -> New)
+        const sortedLogs = [...projectLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        const newActualData = points.map(pointDate => {
+          // A. Future -> null
+          const pDate = new Date(pointDate);
+          const tDate = new Date(today);
+          pDate.setHours(0, 0, 0, 0);
+          tDate.setHours(0, 0, 0, 0);
+
+          if (pDate.getTime() > tDate.getTime()) {
+            return null;
+          }
+
+          // B. Valid Logs (<= pointDate)
+          const validLogs = sortedLogs.filter(log => new Date(log.date).getTime() <= pointDate.getTime());
+
+          if (validLogs.length > 0) {
+            const last = validLogs[validLogs.length - 1];
+            return parseFloat((last as any).actualProgress || (last as any).progress || 0);
+          } else {
+            return 0;
+          }
+        });
+        setActualData(newActualData);
       } else {
-        currentLabels = ['Start', 'End'];
-        currentPlannedData = [0, 100];
+        setActualData(points.map((_, i) => (points[i].setHours(0, 0, 0, 0) > today.setHours(0, 0, 0, 0) ? null : 0)));
       }
 
-      // --- Force Fix: Ensure last label is "Planned Completion Date" ---
-      // User requested: "project.endDate". In our context, this is `plannedCompletionDate`.
-      if (plannedCompletionDate && plannedCompletionDate !== '-') {
-        const endDateObj = new Date(plannedCompletionDate);
-        const endLabel = `${String(endDateObj.getMonth() + 1).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')}`;
-
-        if (currentLabels.length > 0) {
-          currentLabels[currentLabels.length - 1] = endLabel;
-        } else {
-          currentLabels.push(endLabel);
-        }
-      }
-      setChartLabels(currentLabels);
-      setPlannedData(currentPlannedData); // Keep planned data in sync
-
-      // 2. Calculate Actual Data (Proportional Method)
-      if (projectLogs && projectLogs.length > 0 && project.startDate) {
-        const today = new Date();
-        const projectStart = new Date(project.startDate);
-        // Use planned completion or actual completion or generic future
-        const projectEndStr = project.actualCompletionDate || plannedCompletionDate;
-        const projectEnd = (projectEndStr && projectEndStr !== '-') ? new Date(projectEndStr) : new Date();
-
-        // If undefined duration, fallback to something reasonable?
-        // Or just use the time difference.
-        // If dates are invalid, we can't calculate.
-        if (!isNaN(projectStart.getTime()) && !isNaN(projectEnd.getTime())) {
-          const totalDuration = projectEnd.getTime() - projectStart.getTime();
-          // Sort Logs (Old -> New) for finding cumulative progress easily
-          const sortedLogs = [...projectLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-          const calculatedActualData = currentLabels.map((label, index) => {
-            // Calculate Date for this label position
-            let labelDate = new Date();
-
-            // If we have exact schedule dates, use them! (Precision)
-            // Otherwise fall back to proportional
-            if (projectSchedule.length === currentLabels.length && projectSchedule[index]) {
-              labelDate = new Date(projectSchedule[index].date);
-            } else {
-              // Proportional Fallback
-              if (index === 0) {
-                labelDate = projectStart;
-              } else if (index === currentLabels.length - 1) {
-                labelDate = projectEnd;
-              } else {
-                const ratio = index / (currentLabels.length - 1);
-                labelDate = new Date(projectStart.getTime() + totalDuration * ratio);
-              }
-            }
-
-            // Set to End of Day for comparison
-            labelDate.setHours(23, 59, 59, 999);
-
-            // A. Future -> null
-            if (labelDate > today && labelDate.getDate() !== today.getDate()) { // Strict future
-              return null;
-            }
-
-            // B. Find latest log before or on labelDate
-            const validLogs = sortedLogs.filter(log => new Date(log.date) <= labelDate);
-
-            if (validLogs.length > 0) {
-              const lastLog = validLogs[validLogs.length - 1];
-              // Try to get actual progress
-              return parseFloat((lastLog as any).actualProgress || (lastLog as any).progress || 0);
-            } else {
-              return 0;
-            }
-          });
-          setActualData(calculatedActualData);
-        }
+      // 3. Calculate Planned Data (Interpolation) to match the 6 steps
+      if (project.scheduleData && project.scheduleData.length > 0) {
+        const sortedSchedule = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const newPlannedData = points.map(pointDate => {
+          // Find latest schedule point <= pointDate
+          const valid = sortedSchedule.filter(s => new Date(s.date).getTime() <= pointDate.getTime());
+          if (valid.length > 0) {
+            return valid[valid.length - 1].progress;
+          } else {
+            // If no schedule point before or on this date, assume 0
+            return 0;
+          }
+        });
+        setPlannedData(newPlannedData);
       } else {
-        // No logs or invalid dates
-        setActualData([0]);
+        // Default linear 0 to 100 if no schedule data
+        const linear = points.map((_, i) => Math.round((i / steps) * 100));
+        setPlannedData(linear);
       }
+
+    } else {
+      // If project is null or invalid, reset chart data
+      setChartLabels(['Start', 'End']);
+      setPlannedData([0, 0]);
+      setActualData([0, null]);
     }
-  }, [project, projectSchedule, projectLogs, plannedCompletionDate]);
+  }, [project, projectLogs, plannedCompletionDate]);
 
   const handleImportPlannedCSV = async () => {
     try {
