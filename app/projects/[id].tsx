@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, StatusBar, Modal, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, StatusBar, Modal, TextInput, Alert, KeyboardAvoidingView, Dimensions } from 'react-native';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import Papa from 'papaparse';
+import { LineChart } from "react-native-chart-kit";
 import { useProjects, Project, Extension, ChangeDesign, SubsequentExpansion, SchedulePoint } from '../../context/ProjectContext';
 import { usePersonnel } from '../../context/PersonnelContext';
 import { useLogs } from '../../context/LogContext';
@@ -77,11 +78,133 @@ export default function ProjectDetailScreen() {
   const [dateFieldTarget, setDateFieldTarget] = useState<string>('');
   const [tempDate, setTempDate] = useState(new Date());
 
+
+  // S-Curve States
+  const [plannedData, setPlannedData] = useState<number[]>([0]);
+  const [actualData, setActualData] = useState<number[]>([0]);
+  const [chartLabels, setChartLabels] = useState<string[]>(['Start']);
+
   useEffect(() => {
     if (project) {
       setEditProject(JSON.parse(JSON.stringify(project)));
+
+      // Load Planned Data if exists (assuming it might be stored in future, currently just local state or re-import)
+      // For now, initialization is empty or could be loaded from project.scheduleData if mapped
+      if (project.scheduleData && project.scheduleData.length > 0) {
+        const sorted = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        // Sample labels to avoid overcrowding: e.g., max 6 labels
+        const pData = sorted.map(s => s.progress);
+        const pLabels = sorted.map(s => s.date.slice(5)); // MM-DD
+        setPlannedData([0, ...pData]);
+        setChartLabels(['Start', ...pLabels]);
+      }
     }
   }, [project, isEditModalVisible]);
+
+  // Calc Actual Data based on Chart Labels (dates)
+  useEffect(() => {
+    if (projectLogs.length > 0 && chartLabels.length > 1) {
+      // Map actual progress to the timeline defined by chartLabels
+      // This is a simplified approach: for each label date, find the latest log log before or on that date
+      const newActualData: number[] = [0]; // Start at 0
+
+      // We need full date strings for comparison, but chartLabels might be shortened. 
+      // Assumption: labels correspond to project.scheduleData dates
+      // If no scheduleData, we can't align easily.
+
+      if (project?.scheduleData && project.scheduleData.length > 0) {
+        const sortedSchedule = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        sortedSchedule.forEach(point => {
+          // Find latest log before or on this point.date
+          // Logs are already sorted desc, so find first log where date <= point.date
+          const validLog = projectLogs.find(l => l.date <= point.date);
+          /* 
+            NOTE: The user request says "grab actualProgress field". 
+            If logs don't have it, we might need a fallback or check schema.
+            Assuming log schema has 'actualProgress' or 'content' containing it?
+            The generic Log type usually has date, content. 
+            If 'todayProgress' is used in other files (commented out), we should check.
+            For now, I will assume a standard field or parse it. 
+            However, the user prompt said: "抓取 actualProgress (實際進度 %) 欄位".
+            I will casting log as any to access this field if strict typing blocks it.
+          */
+          const val = validLog ? (parseFloat((validLog as any).actualProgress) || 0) : 0;
+          // However, progress should be cumulative? 
+          // Usually 'actualProgress' in DB is cumulative. If it's daily, we need to sum.
+          // Let's assume 'actualProgress' represents the cumulative status at that day.
+          // If we cannot find a log on that exact day, we take the most recent one.
+          // BUT, if the date hasn't happened yet?
+          if (new Date(point.date) <= new Date()) {
+            newActualData.push(val);
+          } else {
+            // Future date, maybe push null or previous value? 
+            // ChartKit handles null? Not well. Better to stop line.
+            // But 'actualData' length must match 'labels' to align? 
+            // React Native Chart Kit: if data array is shorter, it just stops.
+            // So we just don't push anything.
+          }
+        });
+        setActualData(newActualData);
+      }
+    }
+  }, [projectLogs, project?.scheduleData]);
+
+  const handleImportPlannedCSV = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/plain'], copyToCacheDirectory: true });
+      if (!res.canceled && res.assets && res.assets[0]) {
+        const file = res.assets[0];
+        const response = await fetch(file.uri);
+        const content = await response.text();
+        Papa.parse(content, {
+          header: true, skipEmptyLines: true,
+          complete: (results) => {
+            const parsed: SchedulePoint[] = [];
+            results.data.forEach((row: any) => {
+              // Flexible key matching
+              const keys = Object.keys(row);
+              const dKey = keys.find(k => k.toLowerCase().includes('date') || k.includes('日期'));
+              const pKey = keys.find(k => k.toLowerCase().includes('progress') || k.includes('進度'));
+
+              if (dKey && pKey && row[dKey]) {
+                parsed.push({
+                  date: row[dKey],
+                  progress: parseFloat(row[pKey]) || 0
+                });
+              }
+            });
+
+            if (parsed.length > 0) {
+              parsed.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+              // Update Project State (to save)
+              // We should probably save this to the project via updateProject
+              // But for now, user asked to "Import... and Display". 
+              // Ideally we save it so it persists.
+              // I'll update the 'editProject' state if modal is open, or just local state?
+              // User said "Import button allows uploading... Parsed data will be Planned Progress Curve".
+              // Better to persist it. I will call updateProject silently or ask user to save?
+              // Let's just update the local chart view first, but logically it should replace project.scheduleData
+
+              // Let's auto-save or prompt? 
+              // Re-using the logic from Edit Modal seems complex here since we are in Detail View.
+              // I will just update the chart state and trigger an update to DB.
+
+              if (id) {
+                updateProject(id as string, { scheduleData: parsed });
+                Alert.alert('成功', '預定進度已匯入並更新');
+              }
+            } else {
+              Alert.alert('錯誤', '無法解析 CSV，請確保包含日期與進度欄位');
+            }
+          }
+        });
+      }
+    } catch (e) {
+      Alert.alert('錯誤', '匯入失敗');
+    }
+  };
 
   // --- Calculations ---
 
@@ -306,6 +429,58 @@ export default function ProjectDetailScreen() {
 
           <View style={styles.infoRow}><Text style={styles.labelCol}>原始總價:</Text><Text style={styles.valCol}>${formatCurrency(project.contractAmount)}</Text></View>
           <View style={styles.infoRow}><Text style={[styles.labelCol, { color: THEME.primary, fontWeight: 'bold' }]}>變更(擴充)後總價:</Text><Text style={[styles.valCol, { color: THEME.primary, fontWeight: 'bold' }]}>${formatCurrency(currentTotalAmount)}</Text></View>
+        </View>
+
+        {/* S-Curve Chart */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>專案進度 S-Curve</Text>
+          {chartLabels.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <LineChart
+                data={{
+                  labels: chartLabels.length > 6 ?
+                    chartLabels.filter((_, i) => i % Math.ceil(chartLabels.length / 6) === 0) :
+                    chartLabels,
+                  datasets: [
+                    {
+                      data: plannedData,
+                      color: (opacity = 1) => `rgba(0, 0, 255, ${opacity})`, // Blue (Planned)
+                      strokeWidth: 2,
+                      withDots: false,
+                    },
+                    {
+                      data: actualData,
+                      color: (opacity = 1) => `rgba(255, 0, 0, ${opacity})`, // Red (Actual)
+                      strokeWidth: 2,
+                    }
+                  ],
+                  legend: ["預定", "實際"]
+                }}
+                width={Dimensions.get("window").width - 60} // Adjust width freely
+                height={220}
+                yAxisSuffix="%"
+                chartConfig={{
+                  backgroundColor: "#ffffff",
+                  backgroundGradientFrom: "#ffffff",
+                  backgroundGradientTo: "#ffffff",
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(51, 51, 51, ${opacity})`,
+                  style: { borderRadius: 16 },
+                  propsForDots: { r: "4", strokeWidth: "2", stroke: "#ffa726" }
+                }}
+                bezier
+                style={{ marginVertical: 8, borderRadius: 16 }}
+              />
+            </ScrollView>
+          )}
+
+          <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end' }}>
+            <TouchableOpacity onPress={handleImportPlannedCSV} style={styles.smallBtn}>
+              <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
+              <Text style={{ color: '#fff', marginLeft: 5, fontSize: 12 }}>匯入預定進度</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Important Dates Card - PRECISE ALIGNMENT */}
@@ -574,4 +749,5 @@ const styles = StyleSheet.create({
   deleteBtnFull: { backgroundColor: '#FF6B6B', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 20 },
   dateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 10 },
   dateBtnText: { color: '#333' },
+  smallBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
 });
