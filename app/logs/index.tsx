@@ -582,32 +582,42 @@ export default function LogsScreen() {
               </View>
 
               <Text style={styles.inputLabel}>日期</Text>
-              {Platform.OS === 'web' ? (
-                <View>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="YYYY-MM-DD"
+              <View style={[styles.input, { padding: 0, justifyContent: 'center', overflow: 'hidden' }]}>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
                     value={newLog.date}
-                    onChangeText={t => setNewLog({ ...newLog, date: t })}
+                    onChange={(e: any) => setNewLog({ ...newLog, date: e.target.value })}
+                    style={{
+                      border: 'none',
+                      width: '100%',
+                      height: '100%',
+                      fontSize: '16px',
+                      padding: '10px',
+                      backgroundColor: 'transparent',
+                      outline: 'none',
+                      color: '#333',
+                      fontFamily: 'inherit'
+                    }}
                   />
-                </View>
-              ) : (
-                <View>
-                  <TouchableOpacity style={styles.selectBtn} onPress={openNativeDatePicker}>
-                    <Text style={{ color: newLog.date ? '#333' : '#999', fontSize: 16 }}>
+                ) : (
+                  <TouchableOpacity
+                    onPress={openNativeDatePicker}
+                    style={{ width: '100%', height: '100%', padding: 10, justifyContent: 'center' }}
+                  >
+                    <Text style={{ color: newLog.date ? '#000' : '#888', fontSize: 16 }}>
                       {newLog.date || '請選擇日期'}
                     </Text>
-                    <Ionicons name="calendar-outline" size={20} color="#666" />
                   </TouchableOpacity>
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={tempDate}
-                      mode="date"
-                      display="default"
-                      onChange={onNativeDateChange}
-                    />
-                  )}
-                </View>
+                )}
+              </View>
+              {Platform.OS !== 'web' && showDatePicker && (
+                <DateTimePicker
+                  value={tempDate}
+                  mode="date"
+                  display="default"
+                  onChange={onNativeDateChange}
+                />
               )}
 
               <Text style={styles.inputLabel}>天氣</Text>

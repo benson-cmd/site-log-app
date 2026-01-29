@@ -133,6 +133,22 @@ export default function ProjectDetailScreen() {
     return data;
   }, [project?.scheduleData, project?.startDate, plannedCompletionDate]);
 
+  // Handler: Edit Button (Fix Empty Form Issue)
+  const handleEditPress = () => {
+    if (project) {
+      setEditProject({
+        name: project.name || '',
+        address: project.address || '',
+        manager: project.manager || '',
+        status: project.status || 'construction',
+        startDate: project.startDate || '',
+        contractAmount: project.contractAmount || 0,
+        contractDuration: project.contractDuration || 0,
+      });
+    }
+    setEditModalVisible(true);
+  };
+
   // S-Curve Logic: 6-Step Fixed Method (User Requested)
   useEffect(() => {
     if (project && project.startDate) {
@@ -170,11 +186,12 @@ export default function ProjectDetailScreen() {
         points.push(new Date(time));
       }
 
-      // Convert to MM-DD
-      const newLabels = points.map(d => {
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${m}-${day}`;
+      // Convert to MM/DD (使用斜線，強制最後一點顯示專案結束日)
+      const newLabels = points.map((d, index) => {
+        const targetDate = index === steps ? endDate : d;
+        const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const day = String(targetDate.getDate()).padStart(2, '0');
+        return `${m}/${day}`;
       });
       setChartLabels(newLabels);
 
@@ -183,30 +200,37 @@ export default function ProjectDetailScreen() {
         // Sort Logs (Old -> New)
         const sortedLogs = [...projectLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        const newActualData = points.map(pointDate => {
-          // A. Future -> null
-          const pDate = new Date(pointDate);
-          const tDate = new Date(today);
-          pDate.setHours(0, 0, 0, 0);
-          tDate.setHours(0, 0, 0, 0);
+        const newActualData = points.map((pointDate, index) => {
+          // 校正最後一點的時間為結束日
+          const compareDate = index === steps ? new Date(endDate) : new Date(pointDate);
+          const todayDate = new Date(today);
 
-          if (pDate.getTime() > tDate.getTime()) {
+          // A. 未來時間不畫線（normalize 到 00:00:00）
+          compareDate.setHours(0, 0, 0, 0);
+          todayDate.setHours(0, 0, 0, 0);
+
+          if (compareDate.getTime() > todayDate.getTime()) {
             return null;
           }
 
-          // B. Valid Logs (<= pointDate)
-          const validLogs = sortedLogs.filter(log => new Date(log.date).getTime() <= pointDate.getTime());
+          // B. 找出該日期(含)以前的最新紀錄
+          const validLogs = sortedLogs.filter(log => {
+            const logDate = new Date(log.date);
+            logDate.setHours(0, 0, 0, 0);
+            return logDate.getTime() <= compareDate.getTime();
+          });
 
           if (validLogs.length > 0) {
-            const last = validLogs[validLogs.length - 1];
-            return parseFloat((last as any).actualProgress || (last as any).progress || 0);
+            const lastLog = validLogs[validLogs.length - 1];
+            const val = parseFloat((lastLog as any).actualProgress || (lastLog as any).progress || '0');
+            return isNaN(val) ? 0 : val;
           } else {
             return 0;
           }
         });
-        setActualData(newActualData);
+        setActualData(newActualData.length > 0 ? newActualData : [0]);
       } else {
-        setActualData(points.map((_, i) => (points[i].setHours(0, 0, 0, 0) > today.setHours(0, 0, 0, 0) ? null : 0)));
+        setActualData([0]);
       }
 
       // 3. Calculate Planned Data (Interpolation) to match the 6 steps
@@ -468,7 +492,7 @@ export default function ProjectDetailScreen() {
             {user?.role === 'admin' && (
               <>
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 15 }}><Ionicons name="trash-outline" size={24} color="#FF6B6B" /></TouchableOpacity>
-                <TouchableOpacity onPress={() => setEditModalVisible(true)}><Ionicons name="create-outline" size={24} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity onPress={handleEditPress}><Ionicons name="create-outline" size={24} color="#fff" /></TouchableOpacity>
               </>
             )}
           </View>
