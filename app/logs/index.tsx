@@ -111,7 +111,10 @@ export default function LogsScreen() {
   };
 
   const handleOpenEdit = (item: LogEntry) => {
-    setNewLog({ ...item, todayProgress: '' });
+    setNewLog({
+      ...item,
+      todayProgress: (item as any).actualProgress ? String((item as any).actualProgress) : ''
+    });
     setEditingId(item.id);
     setIsEditMode(true);
     setAddModalVisible(true);

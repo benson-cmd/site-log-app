@@ -8,6 +8,7 @@ import Papa from 'papaparse';
 import { useUser } from '../../context/UserContext';
 import { useProjects, Project, Extension, ChangeDesign, SubsequentExpansion, SchedulePoint } from '../../context/ProjectContext';
 import { usePersonnel } from '../../context/PersonnelContext';
+import { useLogs } from '../../context/LogContext';
 import { toast } from 'sonner';
 
 const THEME = {
@@ -50,6 +51,7 @@ export default function ProjectsScreen() {
   const { user, logout } = useUser();
   const { projects, addProject, deleteProject } = useProjects();
   const { personnelList } = usePersonnel();
+  const { logs } = useLogs();
 
   // States
   const [menuVisible, setMenuVisible] = useState(false);
@@ -176,6 +178,26 @@ export default function ProjectsScreen() {
         <Ionicons name="calendar-outline" size={18} color="#666" />
       </TouchableOpacity>
     );
+  };
+
+  // 輔助函式：安全解析日期字串 (支援 / 或 -)
+  const parseDate = (dateStr: string) => {
+    if (!dateStr) return 0;
+    // 將 YYYY/MM/DD 強制轉為 YYYY-MM-DD 以便 Date 解析
+    const cleanStr = dateStr.replace(/\//g, '-');
+    return new Date(cleanStr).getTime();
+  };
+
+  // 計算最新進度 (依照日期排序)
+  const getLatestProgress = (projectId: string) => {
+    const projectLogs = logs.filter(l => l.projectId === projectId);
+    if (!projectLogs || projectLogs.length === 0) return 0;
+
+    // 依照日期 (Timestamp) 由大到小排序 (新 -> 舊)
+    const sortedLogs = [...projectLogs].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
+    // 取第一筆 (最新日期) 的進度
+    return parseFloat((sortedLogs[0] as any).actualProgress || '0');
   };
 
   // Calc Planned Progress
@@ -422,7 +444,7 @@ export default function ProjectsScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: 15 }}
           renderItem={({ item }) => {
-            const actual = item.currentActualProgress || 0;
+            const actual = getLatestProgress(item.id);
             const planned = getPlannedProgress(item);
             const diff = actual - planned;
             const isBehind = diff < 0;

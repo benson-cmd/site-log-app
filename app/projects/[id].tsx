@@ -149,90 +149,81 @@ export default function ProjectDetailScreen() {
     setEditModalVisible(true);
   };
 
-  // S-Curve Logic: Carry Forward Latest Progress (User Requested)
+  // S-Curve Logic: Timestamp-Based Comparison (Carry Forward)
   useEffect(() => {
-    if (project && project.startDate && plannedCompletionDate && plannedCompletionDate !== '-') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0); // 歸零時間，只比對日期
-      const startDate = new Date(project.startDate);
-      const endDate = new Date(plannedCompletionDate);
+    if (project) {
+      // 1. 統一日期處理函式
+      const getTimestamp = (dateStr: string | undefined) => {
+        if (!dateStr) return 0;
+        return new Date(dateStr.replace(/\//g, '-')).getTime();
+      };
 
-      // 1. 生成 X 軸標籤 (Labels) - 增加取樣密度到 6 點
-      const points = [];
-      const totalTime = endDate.getTime() - startDate.getTime();
-      const steps = 6;
+      const todayTs = new Date().setHours(0, 0, 0, 0); // 今日凌晨
+      const startTs = getTimestamp(project.startDate);
+      const endTs = getTimestamp(plannedCompletionDate);
+
+      // 2. 生成 X 軸標籤 (Labels) - 確保包含起點與終點
+      const points: number[] = []; // 存 Timestamp 用於比對
+      const totalTime = endTs - startTs;
+      const steps = 6; // 使用使用者要求的 6 點密度
 
       for (let i = 0; i <= steps; i++) {
         if (i === steps) {
-          points.push(endDate); // 強制最後一點是完工日
+          points.push(endTs); // 強制最後一點為完工日
         } else {
-          const time = startDate.getTime() + (totalTime * (i / steps));
-          points.push(new Date(time));
+          points.push(startTs + (totalTime * (i / steps)));
         }
       }
 
-      // 設定 Labels (MM/DD)
-      const newLabels = points.map((d, index) => {
-        // 強制最後一點顯示為完工日
-        const targetDate = index === steps ? endDate : d;
-        const m = String(targetDate.getMonth() + 1).padStart(2, '0');
-        const day = String(targetDate.getDate()).padStart(2, '0');
+      // 轉換 Labels 顯示 (MM/DD)
+      const newLabels = points.map(ts => {
+        const d = new Date(ts);
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
         return `${m}/${day}`;
       });
       setChartLabels(newLabels);
 
-      // 2. 計算實際進度 (Actual Data) - 關鍵修正
+      // 3. 計算實際進度 (Actual Data)
       if (projectLogs && projectLogs.length > 0) {
-        // 輔助函式：轉成 YYYY-MM-DD 字串以進行安全比對
-        const toDateStr = (dateObj: Date | string) => {
-          const d = new Date(dateObj);
-          return d.toISOString().split('T')[0];
-        };
+        // (A) 預先處理 Logs：轉成 { ts, progress } 並排序
+        const cleanLogs = projectLogs.map(log => ({
+          ts: getTimestamp(log.date),
+          progress: parseFloat((log as any).actualProgress || '0')
+        })).sort((a, b) => a.ts - b.ts); // 由舊到新
 
-        const todayStr = toDateStr(today);
-
-        // 先排序 Logs (由舊到新)
-        const sortedLogs = [...projectLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-        const newActualData = points.map(pointDate => {
-          const pointStr = toDateStr(pointDate);
-
-          // A. 如果該點在「明天以後」，就不畫線 (return null)
-          if (pointStr > todayStr) {
+        // (B) 映射到圖表點
+        const newActualData = points.map(pointTs => {
+          // 如果該點在「明天以後」，則不畫線 (return null)
+          // 比較時稍微寬容一點 (pointTs > todayTs + 24小時)
+          if (pointTs > todayTs + 86400000) {
             return null;
           }
 
-          // B. 找出「日期 <= 圖表時間點」的最新一筆 Log
-          // 使用字串比對，確保 2026-01-29 會被算在 2026-01-29 (或之後) 的點內
-          const validLogs = sortedLogs.filter(log => toDateStr(log.date) <= pointStr);
+          // 找出「發生時間 <= pointTs」的最新一筆 Log
+          const validLogs = cleanLogs.filter(log => log.ts <= pointTs);
 
           if (validLogs.length > 0) {
-            // 取符合條件的最後一筆
-            const lastLog = validLogs[validLogs.length - 1];
-            const val = parseFloat((lastLog as any).actualProgress || (lastLog as any).progress || '0');
-            return isNaN(val) ? 0 : val;
+            return validLogs[validLogs.length - 1].progress;
           } else {
-            // 該時間點前無數據，回傳 0
             return 0;
           }
         });
 
-        // 確保數據存在
         setActualData(newActualData);
       } else {
-        setActualData([0]);
+        setActualData([0]); // 沒 Log 至少畫個起點
       }
 
-      // 3. Calculate Planned Data (Interpolation) to match the steps
+      // 4. Calculate Planned Data (Interpolation) to match the steps
       if (project.scheduleData && project.scheduleData.length > 0) {
-        const sortedSchedule = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        const newPlannedData = points.map(pointDate => {
-          // Find latest schedule point <= pointDate
-          const valid = sortedSchedule.filter(s => new Date(s.date).getTime() <= pointDate.getTime());
+        const sortedSchedule = [...project.scheduleData].sort((a, b) => getTimestamp(a.date) - getTimestamp(b.date));
+        const newPlannedData = points.map(pointTs => {
+          // Find latest schedule point <= pointTs
+          const valid = sortedSchedule.filter(s => getTimestamp(s.date) <= pointTs);
           if (valid.length > 0) {
             return valid[valid.length - 1].progress;
           } else {
-            // If no schedule point before or on this date, assume 0
             return 0;
           }
         });
@@ -243,7 +234,6 @@ export default function ProjectDetailScreen() {
         setPlannedData(linear);
       }
     } else {
-      // If project is null or invalid, reset chart data
       setChartLabels(['Start', 'End']);
       setPlannedData([0, 0]);
       setActualData([0, null]);
