@@ -591,8 +591,7 @@ export default function LogsScreen() {
                     onChangeText={t => setNewLog({ ...newLog, date: t })}
                   />
                 </View>
-              ) : (
-                  )}
+              ) : null}
           </View>
               )}
 
