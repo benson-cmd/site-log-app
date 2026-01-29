@@ -56,6 +56,31 @@ export default function ProjectDetailScreen() {
   const project = projects.find(p => p.id === id);
   const projectLogs = logs.filter(l => l.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  // --- Calculations (Moved Up) ---
+  const totalExtensionDays = useMemo(() => {
+    return project?.extensions?.reduce((sum, ext) => sum + (ext.days || 0), 0) || 0;
+  }, [project?.extensions]);
+
+  const plannedCompletionDate = useMemo(() => {
+    if (!project?.startDate || !project?.contractDuration) return '-';
+    const start = new Date(project.startDate);
+    if (isNaN(start.getTime())) return '-';
+    const totalDays = (project.contractDuration || 0) + totalExtensionDays - 1;
+    const end = new Date(start);
+    end.setDate(start.getDate() + totalDays);
+    return end.toISOString().split('T')[0];
+  }, [project?.startDate, project?.contractDuration, totalExtensionDays]);
+
+  const currentTotalAmount = useMemo(() => {
+    if (!project) return 0;
+    let base = project.contractAmount || 0;
+    if (project.changeDesigns && project.changeDesigns.length > 0) {
+      base = project.changeDesigns[project.changeDesigns.length - 1].newTotalAmount;
+    }
+    const expansions = project.subsequentExpansions?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+    return base + expansions;
+  }, [project?.contractAmount, project?.changeDesigns, project?.subsequentExpansions]);
+
   // Edit Modal State
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [editProject, setEditProject] = useState<Partial<Project>>({});
@@ -80,75 +105,76 @@ export default function ProjectDetailScreen() {
 
 
   // S-Curve States
+  // S-Curve States
   const [plannedData, setPlannedData] = useState<number[]>([0]);
-  const [actualData, setActualData] = useState<number[]>([0]);
+  const [actualData, setActualData] = useState<(number | null)[]>([0]);
   const [chartLabels, setChartLabels] = useState<string[]>(['Start']);
+
+  // Computed Schedule Data (Source of Truth for Chart)
+  const projectSchedule = useMemo(() => {
+    let data: SchedulePoint[] = [];
+    if (project?.scheduleData && project.scheduleData.length > 0) {
+      data = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }
+    // Inject Start Point if needed
+    const pStart = project?.startDate;
+    if (pStart && pStart !== '-') {
+      if (data.length === 0 || data[0].date !== pStart) {
+        data.unshift({ date: pStart, progress: 0 });
+      }
+    }
+    // Inject End Point if needed 
+    const pEndDateVal = plannedCompletionDate;
+    if (pEndDateVal && pEndDateVal !== '-') {
+      if (data.length > 0 && data[data.length - 1].date !== pEndDateVal) {
+        data.push({ date: pEndDateVal, progress: 100 });
+      }
+    }
+    return data;
+  }, [project?.scheduleData, project?.startDate, plannedCompletionDate]);
 
   useEffect(() => {
     if (project) {
       setEditProject(JSON.parse(JSON.stringify(project)));
-
-      // Load Planned Data if exists (assuming it might be stored in future, currently just local state or re-import)
-      // For now, initialization is empty or could be loaded from project.scheduleData if mapped
-      if (project.scheduleData && project.scheduleData.length > 0) {
-        const sorted = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        // Sample labels to avoid overcrowding: e.g., max 6 labels
-        const pData = sorted.map(s => s.progress);
-        const pLabels = sorted.map(s => s.date.slice(5)); // MM-DD
-        setPlannedData([0, ...pData]);
-        setChartLabels(['Start', ...pLabels]);
-      }
     }
-  }, [project, isEditModalVisible]);
+    if (projectSchedule.length > 0) {
+      setPlannedData(projectSchedule.map(s => s.progress));
+      setChartLabels(projectSchedule.map(s => s.date.slice(5)));
+    }
+  }, [project, isEditModalVisible, projectSchedule]);
 
-  // Calc Actual Data based on Chart Labels (dates)
+  // Calc Actual Data based on projectSchedule
   useEffect(() => {
-    if (projectLogs.length > 0 && chartLabels.length > 1) {
-      // Map actual progress to the timeline defined by chartLabels
-      // This is a simplified approach: for each label date, find the latest log log before or on that date
-      const newActualData: number[] = [0]; // Start at 0
+    if (projectSchedule.length > 0) {
+      const today = new Date();
+      // Remove time part for accurate date comparison
+      today.setHours(0, 0, 0, 0);
 
-      // We need full date strings for comparison, but chartLabels might be shortened. 
-      // Assumption: labels correspond to project.scheduleData dates
-      // If no scheduleData, we can't align easily.
+      const newActualData = projectSchedule.map(point => {
+        const pointDate = new Date(point.date);
+        pointDate.setHours(0, 0, 0, 0);
 
-      if (project?.scheduleData && project.scheduleData.length > 0) {
-        const sortedSchedule = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        // Future: Return null
+        if (pointDate > today) {
+          return null;
+        }
 
-        sortedSchedule.forEach(point => {
-          // Find latest log before or on this point.date
-          // Logs are already sorted desc, so find first log where date <= point.date
-          const validLog = projectLogs.find(l => l.date <= point.date);
-          /* 
-            NOTE: The user request says "grab actualProgress field". 
-            If logs don't have it, we might need a fallback or check schema.
-            Assuming log schema has 'actualProgress' or 'content' containing it?
-            The generic Log type usually has date, content. 
-            If 'todayProgress' is used in other files (commented out), we should check.
-            For now, I will assume a standard field or parse it. 
-            However, the user prompt said: "抓取 actualProgress (實際進度 %) 欄位".
-            I will casting log as any to access this field if strict typing blocks it.
-          */
-          const val = validLog ? (parseFloat((validLog as any).actualProgress) || 0) : 0;
-          // However, progress should be cumulative? 
-          // Usually 'actualProgress' in DB is cumulative. If it's daily, we need to sum.
-          // Let's assume 'actualProgress' represents the cumulative status at that day.
-          // If we cannot find a log on that exact day, we take the most recent one.
-          // BUT, if the date hasn't happened yet?
-          if (new Date(point.date) <= new Date()) {
-            newActualData.push(val);
-          } else {
-            // Future date, maybe push null or previous value? 
-            // ChartKit handles null? Not well. Better to stop line.
-            // But 'actualData' length must match 'labels' to align? 
-            // React Native Chart Kit: if data array is shorter, it just stops.
-            // So we just don't push anything.
-          }
-        });
-        setActualData(newActualData);
-      }
+        // Find latest log before or on this point
+        // projectLogs is sorted Newest first
+        // We find the first log where log.date <= point.date
+        const latestLog = projectLogs.find(l => l.date <= point.date);
+
+        if (latestLog) {
+          // Access 'actualProgress' or fallback
+          return parseFloat((latestLog as any).actualProgress || (latestLog as any).progress || 0);
+        } else {
+          // specific logic: if no log found before this date, it's 0 (start of project)
+          return 0;
+        }
+      });
+      setActualData(newActualData);
     }
-  }, [projectLogs, project?.scheduleData]);
+  }, [projectSchedule, projectLogs]);
 
   const handleImportPlannedCSV = async () => {
     try {
@@ -208,29 +234,7 @@ export default function ProjectDetailScreen() {
 
   // --- Calculations ---
 
-  const totalExtensionDays = useMemo(() => {
-    return project?.extensions?.reduce((sum, ext) => sum + (ext.days || 0), 0) || 0;
-  }, [project?.extensions]);
 
-  const plannedCompletionDate = useMemo(() => {
-    if (!project?.startDate || !project?.contractDuration) return '-';
-    const start = new Date(project.startDate);
-    if (isNaN(start.getTime())) return '-';
-    const totalDays = (project.contractDuration || 0) + totalExtensionDays - 1;
-    const end = new Date(start);
-    end.setDate(start.getDate() + totalDays);
-    return end.toISOString().split('T')[0];
-  }, [project?.startDate, project?.contractDuration, totalExtensionDays]);
-
-  const currentTotalAmount = useMemo(() => {
-    if (!project) return 0;
-    let base = project.contractAmount || 0;
-    if (project.changeDesigns && project.changeDesigns.length > 0) {
-      base = project.changeDesigns[project.changeDesigns.length - 1].newTotalAmount;
-    }
-    const expansions = project.subsequentExpansions?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
-    return base + expansions;
-  }, [project?.contractAmount, project?.changeDesigns, project?.subsequentExpansions]);
 
 
   // --- Handlers ---
@@ -449,9 +453,11 @@ export default function ProjectDetailScreen() {
                       withDots: false,
                     },
                     {
-                      data: actualData,
+                      data: actualData as number[], // Cast to allow nulls (library supports it, typings might be strict)
                       color: (opacity = 1) => `rgba(255, 0, 0, ${opacity})`, // Red (Actual)
                       strokeWidth: 2,
+                      withDots: true,
+                      propsForDots: { r: "3", stroke: "red" }
                     }
                   ],
                   legend: ["預定", "實際"]
