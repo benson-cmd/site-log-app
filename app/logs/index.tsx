@@ -559,13 +559,14 @@ export default function LogsScreen() {
               ) : (
                 <View>
                   <TouchableOpacity
-                    style={styles.input}
+                    style={[styles.input, { justifyContent: 'center' }]}
                     onPress={() => setShowDatePicker(true)}
                   >
-                    <Text style={{ color: newLog.date ? '#000' : '#999', paddingTop: 3 }}>
+                    <Text style={{ color: newLog.date ? '#000' : '#888' }}>
                       {newLog.date || '請選擇日期'}
                     </Text>
                   </TouchableOpacity>
+
                   {showDatePicker && (
                     <DateTimePicker
                       value={newLog.date ? new Date(newLog.date) : new Date()}
@@ -574,8 +575,12 @@ export default function LogsScreen() {
                       onChange={(event, selectedDate) => {
                         setShowDatePicker(false);
                         if (selectedDate) {
-                          const formattedDate = selectedDate.toISOString().split('T')[0];
-                          setNewLog({ ...newLog, date: formattedDate });
+                          // 轉換為 YYYY-MM-DD 格式字串
+                          const year = selectedDate.getFullYear();
+                          const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                          const day = String(selectedDate.getDate()).padStart(2, '0');
+                          const dateString = `${year}-${month}-${day}`;
+                          setNewLog({ ...newLog, date: dateString });
                         }
                       }}
                     />
