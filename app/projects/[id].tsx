@@ -165,7 +165,7 @@ export default function ProjectDetailScreen() {
       // 2. 生成 X 軸標籤 (Labels) - 確保包含起點與終點
       const points: number[] = []; // 存 Timestamp 用於比對
       const totalTime = endTs - startTs;
-      const steps = 6; // 使用使用者要求的 6 點密度
+      const steps = 5;
 
       for (let i = 0; i <= steps; i++) {
         if (i === steps) {
