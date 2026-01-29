@@ -149,17 +149,18 @@ export default function ProjectDetailScreen() {
     setEditModalVisible(true);
   };
 
-  // S-Curve Logic: String-Based Date Comparison (User Requested)
+  // S-Curve Logic: Carry Forward Latest Progress (User Requested)
   useEffect(() => {
     if (project && project.startDate && plannedCompletionDate && plannedCompletionDate !== '-') {
       const today = new Date();
+      today.setHours(0, 0, 0, 0); // 歸零時間，只比對日期
       const startDate = new Date(project.startDate);
       const endDate = new Date(plannedCompletionDate);
 
-      // 1. 生成 X 軸標籤 (Labels) - 強制包含起點與終點
+      // 1. 生成 X 軸標籤 (Labels) - 增加取樣密度到 6 點
       const points = [];
       const totalTime = endDate.getTime() - startDate.getTime();
-      const steps = 5; // 改為 5 等分，讓頭尾更明確
+      const steps = 6;
 
       for (let i = 0; i <= steps; i++) {
         if (i === steps) {
@@ -170,15 +171,17 @@ export default function ProjectDetailScreen() {
         }
       }
 
-      // 格式化 X 軸顯示 (MM/DD)
-      const newLabels = points.map(d => {
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
+      // 設定 Labels (MM/DD)
+      const newLabels = points.map((d, index) => {
+        // 強制最後一點顯示為完工日
+        const targetDate = index === steps ? endDate : d;
+        const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const day = String(targetDate.getDate()).padStart(2, '0');
         return `${m}/${day}`;
       });
       setChartLabels(newLabels);
 
-      // 2. 計算實際進度 (Actual Data) - 修正比對邏輯
+      // 2. 計算實際進度 (Actual Data) - 關鍵修正
       if (projectLogs && projectLogs.length > 0) {
         // 輔助函式：轉成 YYYY-MM-DD 字串以進行安全比對
         const toDateStr = (dateObj: Date | string) => {
