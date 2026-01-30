@@ -164,10 +164,10 @@ export default function ProjectDetailScreen() {
       // 定義「現在」的時間戳記
       const nowTs = new Date().getTime();
 
-      // 1. 建立 X 軸座標 (強制 5 等分，確保包含起點與終點)
+      // 1. 建立 X 軸座標 (固定 6 等分，提高解析度)
       const points = [];
       const totalDuration = endTs - startTs;
-      const steps = 5;
+      const steps = 6;
       for (let i = 0; i <= steps; i++) {
         if (i === steps) points.push(endTs);
         else points.push(startTs + (totalDuration * (i / steps)));
