@@ -113,13 +113,19 @@ export default function LogsScreen() {
   // 當點擊列表的「筆」圖示時
   const handleEditLog = (log: LogEntry) => {
     setEditingId(log.id);
+
+    // 強制轉換日期格式給 Input 使用
+    const safeDate = log.date ? String(log.date).replace(/\//g, '-') : '';
+
     setNewLog({
       ...log,
-      // ⚠️ 關鍵修正：確保日期格式統一為 YYYY-MM-DD (input type="date" 需要)
-      date: log.date.replace(/\//g, '-'),
+      date: safeDate,
 
-      // ⚠️ 關鍵修正：將資料庫的 actualProgress 轉為字串帶入 todayProgress
-      todayProgress: (log as any).actualProgress ? String((log as any).actualProgress) : '',
+      // ⚠️ 關鍵修正：這裡必須將 actualProgress 轉字串給 todayProgress
+      // 若 actualProgress 為 undefined，則給空字串
+      todayProgress: ((log as any).actualProgress !== undefined && (log as any).actualProgress !== null)
+        ? String((log as any).actualProgress)
+        : '',
 
       weather: log.weather || '晴',
       content: log.content || '',

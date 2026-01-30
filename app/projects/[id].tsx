@@ -152,23 +152,24 @@ export default function ProjectDetailScreen() {
   // S-Curve Logic: Timestamp-Based Comparison (Carry Forward)
   useEffect(() => {
     if (project) {
-      // 輔助：統一轉 Timestamp
-      const toTs = (d: string | Date) => {
-        const str = typeof d === 'string' ? d.replace(/\//g, '-') : d.toISOString();
-        return new Date(str).getTime();
+      // 輔助：統一轉 Timestamp (無視斜線或橫線差異)
+      const toTs = (d: any) => {
+        if (!d) return 0;
+        const s = typeof d === 'string' ? d.replace(/\//g, '-') : d.toISOString();
+        return new Date(s).getTime();
       };
 
-      const startTs = toTs(project.startDate || '');
+      const startTs = toTs(project.startDate);
       const endTs = toTs(plannedCompletionDate);
-      const todayTs = new Date().setHours(0, 0, 0, 0); // 今天凌晨
+      const todayTs = new Date().setHours(0, 0, 0, 0);
 
       // 1. 生成 X 軸 (5等分)
-      const points: number[] = [];
+      const points = [];
       const totalTime = endTs - startTs;
       const steps = 5;
 
       for (let i = 0; i <= steps; i++) {
-        if (i === steps) points.push(endTs); // 強制終點
+        if (i === steps) points.push(endTs);
         else points.push(startTs + (totalTime * (i / steps)));
       }
 
@@ -181,17 +182,19 @@ export default function ProjectDetailScreen() {
 
       // 2. 計算實際進度 (Red Line)
       if (projectLogs && projectLogs.length > 0) {
-        // 先把 Log 洗成統一格式並排序
+        // (A) 清洗並排序 Logs
         const cleanLogs = projectLogs.map(l => ({
           ts: toTs(l.date),
           val: parseFloat((l as any).actualProgress || 0)
         })).sort((a, b) => a.ts - b.ts); // 由舊到新
 
+        // (B) 對應圖表點
         const newActualData = points.map(pointTs => {
-          // 如果該點在「明天以後」，不畫線
+          // 如果該點是「未來」(比今天晚)，不畫線
+          // 加 86400000 (一天) 是為了避免時區導致當天剛好被切掉
           if (pointTs > todayTs + 86400000) return null;
 
-          // 找出「時間 <= 圖表點」的最新一筆
+          // 找出「發生時間 <= 圖表點」的最新一筆
           const validLogs = cleanLogs.filter(l => l.ts <= pointTs);
 
           if (validLogs.length > 0) {
@@ -200,12 +203,13 @@ export default function ProjectDetailScreen() {
           return 0;
         });
 
-        setActualData(newActualData);
+        // 避免全空導致報錯，至少給個 [0]
+        setActualData(newActualData.length > 0 ? newActualData : [0]);
       } else {
         setActualData([0]);
       }
 
-      // 3. 計算預定進度 (Blue Line) - 採用相同比對法
+      // 3. 計算預定進度 (Blue Line) - 採用相同歸一化邏輯
       if (project.scheduleData && project.scheduleData.length > 0) {
         const sortedSchedule = [...project.scheduleData].sort((a, b) => toTs(a.date) - toTs(b.date));
         const newPlannedData = points.map(pointTs => {

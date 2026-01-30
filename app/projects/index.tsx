@@ -180,28 +180,24 @@ export default function ProjectsScreen() {
     );
   };
 
-  // 1. 新增一個輔助函式，不管日期是斜線還是橫線，通通轉成 Timestamp
-  const parseDateSafe = (dateStr: string) => {
-    if (!dateStr) return 0;
-    // 將 "2026/01/29" 轉為 "2026-01-29" 以便標準解析
-    const standardDate = dateStr.replace(/\//g, '-');
-    return new Date(standardDate).getTime();
-  };
-
-  // 2. 使用此函式來抓取最新進度
+  // 1. 強制日期清洗函式 (放在 Component 外部或內部皆可)
   const getLatestProgress = (projectLogs: any[]) => {
     if (!projectLogs || projectLogs.length === 0) return 0;
 
-    // 排序：日期最新的排前面 (Desc)
-    const sortedLogs = [...projectLogs].sort((a, b) => {
-      return parseDateSafe(b.date) - parseDateSafe(a.date);
-    });
+    // 使用 map 先將日期轉為數值，避免 sort 內重複運算
+    const sortedLogs = projectLogs.map(log => {
+      // 強制將 YYYY/MM/DD 轉為 YYYY-MM-DD，再轉為 Timestamp
+      const dateStr = log.date ? String(log.date).replace(/\//g, '-') : '';
+      return {
+        ...log,
+        _timestamp: dateStr ? new Date(dateStr).getTime() : 0
+      };
+    }).sort((a, b) => b._timestamp - a._timestamp); // 大到小 (新 -> 舊)
 
-    // 取第一筆 (最新的一筆)
+    // 取第一筆 (最新日期) 的實際進度
     const latestLog = sortedLogs[0];
-
-    // 轉成數字，若無則回傳 0
-    return latestLog.actualProgress ? parseFloat(latestLog.actualProgress) : 0;
+    const val = parseFloat(latestLog.actualProgress);
+    return isNaN(val) ? 0 : val;
   };
 
   // Calc Planned Progress
