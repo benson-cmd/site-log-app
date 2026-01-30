@@ -110,12 +110,23 @@ export default function LogsScreen() {
     setAddModalVisible(true);
   };
 
-  const handleOpenEdit = (item: LogEntry) => {
+  // 當點擊列表的「筆」圖示時
+  const handleEditLog = (log: LogEntry) => {
+    setEditingId(log.id);
     setNewLog({
-      ...item,
-      todayProgress: (item as any).actualProgress ? String((item as any).actualProgress) : ''
+      ...log,
+      // ⚠️ 關鍵修正：確保日期格式統一為 YYYY-MM-DD (input type="date" 需要)
+      date: log.date.replace(/\//g, '-'),
+
+      // ⚠️ 關鍵修正：將資料庫的 actualProgress 轉為字串帶入 todayProgress
+      todayProgress: (log as any).actualProgress ? String((log as any).actualProgress) : '',
+
+      weather: log.weather || '晴',
+      content: log.content || '',
+      labor: log.labor || [],
+      machines: log.machines || [],
+      photos: log.photos || []
     });
-    setEditingId(item.id);
     setIsEditMode(true);
     setAddModalVisible(true);
   };
@@ -458,7 +469,7 @@ export default function LogsScreen() {
           {/* 2. 作者本人(reporterId === uid) 且 狀態不為 'approved' (已核准不可再改，除非管理員) */}
           {(isAdmin || (item.reporterId === user?.uid && item.status !== 'approved')) && (
             <View style={{ flexDirection: 'row', gap: 15 }}>
-              <TouchableOpacity onPress={() => handleOpenEdit(item)}>
+              <TouchableOpacity onPress={() => handleEditLog(item)}>
                 <Ionicons name="create-outline" size={24} color="#C69C6D" />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => handleDelete(item.id)}>

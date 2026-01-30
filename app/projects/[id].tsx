@@ -152,91 +152,75 @@ export default function ProjectDetailScreen() {
   // S-Curve Logic: Timestamp-Based Comparison (Carry Forward)
   useEffect(() => {
     if (project) {
-      // 1. 統一日期處理函式
-      const getTimestamp = (dateStr: string | undefined) => {
-        if (!dateStr) return 0;
-        return new Date(dateStr.replace(/\//g, '-')).getTime();
+      // 輔助：統一轉 Timestamp
+      const toTs = (d: string | Date) => {
+        const str = typeof d === 'string' ? d.replace(/\//g, '-') : d.toISOString();
+        return new Date(str).getTime();
       };
 
-      const todayTs = new Date().setHours(0, 0, 0, 0); // 今日凌晨
-      const startTs = getTimestamp(project.startDate);
-      const endTs = getTimestamp(plannedCompletionDate);
+      const startTs = toTs(project.startDate || '');
+      const endTs = toTs(plannedCompletionDate);
+      const todayTs = new Date().setHours(0, 0, 0, 0); // 今天凌晨
 
-      // 2. 生成 X 軸標籤 (Labels) - 確保包含起點與終點
-      const points: number[] = []; // 存 Timestamp 用於比對
+      // 1. 生成 X 軸 (5等分)
+      const points: number[] = [];
       const totalTime = endTs - startTs;
       const steps = 5;
 
       for (let i = 0; i <= steps; i++) {
-        if (i === steps) {
-          points.push(endTs); // 強制最後一點為完工日
-        } else {
-          points.push(startTs + (totalTime * (i / steps)));
-        }
+        if (i === steps) points.push(endTs); // 強制終點
+        else points.push(startTs + (totalTime * (i / steps)));
       }
 
-      // 轉換 Labels 顯示 (MM/DD)
+      // 設定 Labels
       const newLabels = points.map(ts => {
         const d = new Date(ts);
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${m}/${day}`;
+        return `${d.getMonth() + 1}/${d.getDate()}`;
       });
       setChartLabels(newLabels);
 
-      // 3. 計算實際進度 (Actual Data)
+      // 2. 計算實際進度 (Red Line)
       if (projectLogs && projectLogs.length > 0) {
-        // (A) 預先處理 Logs：轉成 { ts, progress } 並排序
-        const cleanLogs = projectLogs.map(log => ({
-          ts: getTimestamp(log.date),
-          progress: parseFloat((log as any).actualProgress || '0')
+        // 先把 Log 洗成統一格式並排序
+        const cleanLogs = projectLogs.map(l => ({
+          ts: toTs(l.date),
+          val: parseFloat((l as any).actualProgress || 0)
         })).sort((a, b) => a.ts - b.ts); // 由舊到新
 
-        // (B) 映射到圖表點
         const newActualData = points.map(pointTs => {
-          // 如果該點在「明天以後」，則不畫線 (return null)
-          // 比較時稍微寬容一點 (pointTs > todayTs + 24小時)
-          if (pointTs > todayTs + 86400000) {
-            return null;
-          }
+          // 如果該點在「明天以後」，不畫線
+          if (pointTs > todayTs + 86400000) return null;
 
-          // 找出「發生時間 <= pointTs」的最新一筆 Log
-          const validLogs = cleanLogs.filter(log => log.ts <= pointTs);
+          // 找出「時間 <= 圖表點」的最新一筆
+          const validLogs = cleanLogs.filter(l => l.ts <= pointTs);
 
           if (validLogs.length > 0) {
-            return validLogs[validLogs.length - 1].progress;
-          } else {
-            return 0;
+            return validLogs[validLogs.length - 1].val;
           }
+          return 0;
         });
 
         setActualData(newActualData);
       } else {
-        setActualData([0]); // 沒 Log 至少畫個起點
+        setActualData([0]);
       }
 
-      // 4. Calculate Planned Data (Interpolation) to match the steps
+      // 3. 計算預定進度 (Blue Line) - 採用相同比對法
       if (project.scheduleData && project.scheduleData.length > 0) {
-        const sortedSchedule = [...project.scheduleData].sort((a, b) => getTimestamp(a.date) - getTimestamp(b.date));
+        const sortedSchedule = [...project.scheduleData].sort((a, b) => toTs(a.date) - toTs(b.date));
         const newPlannedData = points.map(pointTs => {
-          // Find latest schedule point <= pointTs
-          const valid = sortedSchedule.filter(s => getTimestamp(s.date) <= pointTs);
+          const valid = sortedSchedule.filter(s => toTs(s.date) <= pointTs);
           if (valid.length > 0) {
             return valid[valid.length - 1].progress;
-          } else {
-            return 0;
           }
+          return 0;
         });
         setPlannedData(newPlannedData);
       } else {
-        // Default linear 0 to 100 if no schedule data
+        // 若無資料，則線性 0-100
         const linear = points.map((_, i) => Math.round((i / steps) * 100));
         setPlannedData(linear);
       }
-    } else {
-      setChartLabels(['Start', 'End']);
-      setPlannedData([0, 0]);
-      setActualData([0, null]);
     }
   }, [project, projectLogs, plannedCompletionDate]);
 
