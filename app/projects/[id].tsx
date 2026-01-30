@@ -161,7 +161,7 @@ export default function ProjectDetailScreen() {
       const startTs = toTs(project.startDate);
       const endTs = toTs(plannedCompletionDate);
 
-      // 定義「現在」的時間戳記
+      // 取得「現在」的時間戳記
       const nowTs = new Date().getTime();
 
       // 1. 建立 X 軸座標 (固定 6 等分，提高解析度)
@@ -169,11 +169,12 @@ export default function ProjectDetailScreen() {
       const totalDuration = endTs - startTs;
       const steps = 6;
       for (let i = 0; i <= steps; i++) {
+        // 強制最後一點一定是 End Date (對齊 100%)
         if (i === steps) points.push(endTs);
         else points.push(startTs + (totalDuration * (i / steps)));
       }
 
-      // 更新 Labels
+      // 更新 Labels (MM/DD)
       const labelsStr = points.map(ts => {
         const d = new Date(ts);
         return `${d.getMonth() + 1}/${d.getDate()}`;
@@ -182,7 +183,7 @@ export default function ProjectDetailScreen() {
 
       // 2. 計算實際進度 (Red Line)
       if (projectLogs && projectLogs.length > 0) {
-        // (A) 先整理 Logs：全部轉成 { timestamp, value } 並依照日期排序
+        // (A) 整理 Logs：全部轉成 { timestamp, value } 並依照日期排序
         const cleanLogs = projectLogs.map(l => ({
           ts: toTs(l.date),
           val: parseFloat((l as any).actualProgress || 0)
@@ -195,7 +196,7 @@ export default function ProjectDetailScreen() {
             return null;
           }
 
-          // 核心邏輯：找出 "發生時間 <= 圖表時間點" 的最後一筆紀錄
+          // 核心邏輯：找出 "發生時間 <= 圖表時間點" 的最後一筆紀錄 (Carry Forward)
           const validLogs = cleanLogs.filter(l => l.ts <= pointTs);
 
           if (validLogs.length > 0) {
@@ -223,7 +224,7 @@ export default function ProjectDetailScreen() {
         });
         setPlannedData(newPlannedData);
       } else {
-        // 若無資料，則線性 0-100
+        // 若無資料，則線性 0-100 (確保最後一點是 100)
         const linear = points.map((_, i) => Math.round((i / steps) * 100));
         setPlannedData(linear);
       }
