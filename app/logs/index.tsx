@@ -111,28 +111,29 @@ export default function LogsScreen() {
   };
 
   // 當點擊列表的「筆」圖示時
-  const handleEditLog = (log: LogEntry) => {
-    setEditingId(log.id);
+  const handleEditLog = (logItem: LogEntry) => {
+    setEditingId(logItem.id);
 
-    // 強制轉換日期格式給 Input 使用
-    const safeDate = log.date ? String(log.date).replace(/\//g, '-') : '';
+    // 1. 強制日期格式化 (確保 HTML input type="date" 能正確讀取)
+    const safeDate = logItem.date ? String(logItem.date).replace(/\//g, '-') : '';
+
+    // 2. 關鍵修正：將資料庫的 actualProgress 明確塞入表單的 todayProgress
+    // 必須轉為字串，且處理 0 的情況
+    const progressVal = ((logItem as any).actualProgress !== undefined && (logItem as any).actualProgress !== null)
+      ? String((logItem as any).actualProgress)
+      : '';
 
     setNewLog({
-      ...log,
+      ...logItem,
       date: safeDate,
-
-      // ⚠️ 關鍵修正：這裡必須將 actualProgress 轉字串給 todayProgress
-      // 若 actualProgress 為 undefined，則給空字串
-      todayProgress: ((log as any).actualProgress !== undefined && (log as any).actualProgress !== null)
-        ? String((log as any).actualProgress)
-        : '',
-
-      weather: log.weather || '晴',
-      content: log.content || '',
-      labor: log.labor || [],
-      machines: log.machines || [],
-      photos: log.photos || []
+      todayProgress: progressVal, // ⚠️ 這裡是修復關鍵，原本漏接了
+      weather: logItem.weather || '晴',
+      content: logItem.content || '',
+      labor: logItem.labor || [],
+      machines: logItem.machines || [],
+      photos: logItem.photos || []
     });
+
     setIsEditMode(true);
     setAddModalVisible(true);
   };

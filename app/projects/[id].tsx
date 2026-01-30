@@ -152,59 +152,60 @@ export default function ProjectDetailScreen() {
   // S-Curve Logic: Timestamp-Based Comparison (Carry Forward)
   useEffect(() => {
     if (project) {
-      // 輔助：統一轉 Timestamp (無視斜線或橫線差異)
+      // [輔助工具] 統一轉 Timestamp，無視斜線或橫線差異
       const toTs = (d: any) => {
         if (!d) return 0;
-        const s = typeof d === 'string' ? d.replace(/\//g, '-') : d.toISOString();
-        return new Date(s).getTime();
+        const str = typeof d === 'string' ? d.replace(/\//g, '-') : d.toISOString();
+        return new Date(str).getTime();
       };
 
       const startTs = toTs(project.startDate);
       const endTs = toTs(plannedCompletionDate);
-      const todayTs = new Date().setHours(0, 0, 0, 0);
 
-      // 1. 生成 X 軸 (5等分)
+      // 設定 "今天" 的結束時間 (23:59:59)，確保包含今天的所有紀錄
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+
+      // 1. 建立 X 軸座標 (強制 5 等分，確保包含起點與終點)
       const points = [];
-      const totalTime = endTs - startTs;
+      const totalDuration = endTs - startTs;
       const steps = 5;
-
       for (let i = 0; i <= steps; i++) {
         if (i === steps) points.push(endTs);
-        else points.push(startTs + (totalTime * (i / steps)));
+        else points.push(startTs + (totalDuration * (i / steps)));
       }
 
-      // 設定 Labels
-      const newLabels = points.map(ts => {
+      // 更新 Labels
+      const labelsStr = points.map(ts => {
         const d = new Date(ts);
         return `${d.getMonth() + 1}/${d.getDate()}`;
       });
-      setChartLabels(newLabels);
+      setChartLabels(labelsStr);
 
       // 2. 計算實際進度 (Red Line)
       if (projectLogs && projectLogs.length > 0) {
-        // (A) 清洗並排序 Logs
+        // (A) 先整理 Logs：全部轉成 { timestamp, value } 並依照日期排序
         const cleanLogs = projectLogs.map(l => ({
           ts: toTs(l.date),
           val: parseFloat((l as any).actualProgress || 0)
         })).sort((a, b) => a.ts - b.ts); // 由舊到新
 
-        // (B) 對應圖表點
-        const newActualData = points.map(pointTs => {
-          // 如果該點是「未來」(比今天晚)，不畫線
-          // 加 86400000 (一天) 是為了避免時區導致當天剛好被切掉
-          if (pointTs > todayTs + 86400000) return null;
+        // (B) 對應圖表上的每個點
+        const mappedData = points.map(pointTs => {
+          // 如果這個點在 "未來" (比今天還晚)，就不畫線
+          if (pointTs > endOfToday.getTime()) return null;
 
-          // 找出「發生時間 <= 圖表點」的最新一筆
+          // 核心邏輯：找出 "發生時間 <= 圖表時間點" 的最後一筆紀錄
           const validLogs = cleanLogs.filter(l => l.ts <= pointTs);
 
           if (validLogs.length > 0) {
-            return validLogs[validLogs.length - 1].val;
+            return validLogs[validLogs.length - 1].val; // 取最新的一筆
           }
-          return 0;
+          return 0; // 該時間點前無紀錄
         });
 
-        // 避免全空導致報錯，至少給個 [0]
-        setActualData(newActualData.length > 0 ? newActualData : [0]);
+        // 避免全空導致圖表報錯，至少給一個 [0]
+        setActualData(mappedData.length > 0 ? mappedData : [0]);
       } else {
         setActualData([0]);
       }

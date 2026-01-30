@@ -180,23 +180,23 @@ export default function ProjectsScreen() {
     );
   };
 
-  // 1. 強制日期清洗函式 (放在 Component 外部或內部皆可)
-  const getLatestProgress = (projectLogs: any[]) => {
+  // [強制替換] 專案進度計算邏輯
+  const calculateLatestProgress = (projectLogs: any[]) => {
     if (!projectLogs || projectLogs.length === 0) return 0;
 
-    // 使用 map 先將日期轉為數值，避免 sort 內重複運算
-    const sortedLogs = projectLogs.map(log => {
-      // 強制將 YYYY/MM/DD 轉為 YYYY-MM-DD，再轉為 Timestamp
-      const dateStr = log.date ? String(log.date).replace(/\//g, '-') : '';
-      return {
-        ...log,
-        _timestamp: dateStr ? new Date(dateStr).getTime() : 0
-      };
-    }).sort((a, b) => b._timestamp - a._timestamp); // 大到小 (新 -> 舊)
+    // 1. 統一日期格式轉換 (處理 2026/01/01 與 2026-01-01)
+    const parseTime = (dateStr: any) => {
+      if (!dateStr) return 0;
+      const s = String(dateStr).replace(/\//g, '-');
+      return new Date(s).getTime();
+    };
 
-    // 取第一筆 (最新日期) 的實際進度
-    const latestLog = sortedLogs[0];
-    const val = parseFloat(latestLog.actualProgress);
+    // 2. 排序：時間戳記大者(新)排前面
+    const sorted = [...projectLogs].sort((a, b) => parseTime(b.date) - parseTime(a.date));
+
+    // 3. 取第一筆 (最新日期) 的數值
+    const latest = sorted[0];
+    const val = parseFloat(latest.actualProgress); // 確保讀取 actualProgress 欄位
     return isNaN(val) ? 0 : val;
   };
 
@@ -444,7 +444,7 @@ export default function ProjectsScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: 15 }}
           renderItem={({ item }) => {
-            const displayProgress = getLatestProgress(logs.filter(l => l.projectId === item.id));
+            const displayProgress = calculateLatestProgress(logs.filter(l => l.projectId === item.id));
             const actual = displayProgress;
             const planned = getPlannedProgress(item);
             const diff = actual - planned;
