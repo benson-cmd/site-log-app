@@ -149,7 +149,6 @@ export default function ProjectDetailScreen() {
     setEditModalVisible(true);
   };
 
-  // S-Curve Logic: Timestamp-Based Comparison (Carry Forward)
   useEffect(() => {
     if (project) {
       // [輔助工具] 統一轉 Timestamp，無視斜線或橫線差異
@@ -162,9 +161,8 @@ export default function ProjectDetailScreen() {
       const startTs = toTs(project.startDate);
       const endTs = toTs(plannedCompletionDate);
 
-      // 設定 "今天" 的結束時間 (23:59:59)，確保包含今天的所有紀錄
-      const endOfToday = new Date();
-      endOfToday.setHours(23, 59, 59, 999);
+      // 定義「現在」的時間戳記
+      const nowTs = new Date().getTime();
 
       // 1. 建立 X 軸座標 (強制 5 等分，確保包含起點與終點)
       const points = [];
@@ -192,8 +190,10 @@ export default function ProjectDetailScreen() {
 
         // (B) 對應圖表上的每個點
         const mappedData = points.map(pointTs => {
-          // 如果這個點在 "未來" (比今天還晚)，就不畫線
-          if (pointTs > endOfToday.getTime()) return null;
+          // ⚠️ 關鍵修正：如果是未來時間 (比現在還晚)，回傳 null
+          if (pointTs > nowTs) {
+            return null;
+          }
 
           // 核心邏輯：找出 "發生時間 <= 圖表時間點" 的最後一筆紀錄
           const validLogs = cleanLogs.filter(l => l.ts <= pointTs);
@@ -204,8 +204,9 @@ export default function ProjectDetailScreen() {
           return 0; // 該時間點前無紀錄
         });
 
-        // 避免全空導致圖表報錯，至少給一個 [0]
-        setActualData(mappedData.length > 0 ? mappedData : [0]);
+        // 避免全 null 導致錯誤，若有資料則設定，否則初始為 [0]
+        const hasData = mappedData.some(d => d !== null);
+        setActualData(hasData ? mappedData : [0]);
       } else {
         setActualData([0]);
       }
