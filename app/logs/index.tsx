@@ -114,19 +114,21 @@ export default function LogsScreen() {
   const handleEditLog = (logItem: LogEntry) => {
     setEditingId(logItem.id);
 
-    // 1. 強制日期格式化 (確保 HTML input type="date" 能正確讀取)
+    // 處理日期
     const safeDate = logItem.date ? String(logItem.date).replace(/\//g, '-') : '';
 
-    // 2. 關鍵修正：將資料庫的 actualProgress 明確塞入表單的 todayProgress
-    // 必須轉為字串，且處理 0 的情況
-    const progressVal = ((logItem as any).actualProgress !== undefined && (logItem as any).actualProgress !== null)
-      ? String((logItem as any).actualProgress)
-      : '';
+    // ⚠️ 核心修復：把資料庫的 actualProgress 讀出來給表單
+    // 必須處理 undefined / null 的情況，避免當機
+    let safeProgress = '';
+    if (logItem.actualProgress !== undefined && logItem.actualProgress !== null) {
+      safeProgress = String(logItem.actualProgress);
+    }
 
     setNewLog({
       ...logItem,
+      projectId: logItem.projectId || '',
       date: safeDate,
-      todayProgress: progressVal, // ⚠️ 這裡是修復關鍵，原本漏接了
+      todayProgress: safeProgress, // 這行決定了編輯視窗會不會空白
       weather: logItem.weather || '晴',
       content: logItem.content || '',
       labor: logItem.labor || [],
@@ -246,15 +248,17 @@ export default function LogsScreen() {
 
       if (isEditMode && editingId) {
         const { todayProgress, ...logData } = newLog;
-        const updateData = {
+        const updateData: Partial<LogEntry> = {
           ...logData,
+          // ⚠️ 核心修復：將表單的 todayProgress 存入 actualProgress
+          actualProgress: newLog.todayProgress ? String(newLog.todayProgress) : '0',
           projectId: targetProject.id,
           machines: sanitizedMachines,
           labor: sanitizedLabor,
           date: submissionDate,
           photos: uploadedUrls,
-          reporterId: newLog.reporterId || user?.uid, // 確保編輯時保留或更新 ID
-          status: (newLog.status === 'rejected' || newLog.status === 'pending_review') ? 'pending_review' : newLog.status // [手術級優化] 退回件重新提交，強制變回待審核
+          reporterId: newLog.reporterId || user?.uid,
+          status: (newLog.status === 'rejected' || newLog.status === 'pending_review') ? 'pending_review' : newLog.status
         };
         const cleanUpdateData = JSON.parse(JSON.stringify(updateData));
         await updateLog(editingId, cleanUpdateData);
@@ -263,13 +267,15 @@ export default function LogsScreen() {
           date: submissionDate,
           project: newLog.project!,
           projectId: targetProject.id,
+          // ⚠️ 核心修復：將表單的 todayProgress 存入 actualProgress
+          actualProgress: newLog.todayProgress ? String(newLog.todayProgress) : '0',
           weather: newLog.weather || '晴',
           content: newLog.content!,
           machines: sanitizedMachines,
           labor: sanitizedLabor,
           plannedProgress: newLog.plannedProgress,
           reporter: newLog.reporter || user?.name || '使用者',
-          reporterId: user?.uid, // 紀錄提交者 UID
+          reporterId: user?.uid,
           status: 'pending_review',
           photos: uploadedUrls
         };

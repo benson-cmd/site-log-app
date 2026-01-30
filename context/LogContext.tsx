@@ -32,6 +32,7 @@ export interface LogEntry {
   photos?: string[];
   notes?: string;         // 新增備註欄位
   reporterId?: string;    // 新增提交者 ID 用於權限控管
+  actualProgress?: string | number; // 實際累計進度
 }
 
 interface LogContextType {
