@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Modal, Alert, Platform, StatusBar, TextInput, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Modal, Alert, Platform, StatusBar, TextInput, KeyboardAvoidingView, Dimensions } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -8,6 +8,8 @@ import { useUser } from '../../context/UserContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useLogs } from '../../context/LogContext';
 import { toast } from 'sonner';
+import { PieChart } from 'react-native-chart-kit';
+import { useMemo } from 'react';
 
 // Announcement Interface
 interface Announcement {
@@ -56,11 +58,64 @@ export default function DashboardScreen() {
     fetchNotices();
   }, []);
 
-  // 1. 統計邏輯
+  // 1. 基礎統計
   // 進行中專案：executionStatus = 'construction'
   const activeProjectsCount = projects.filter(p => p.executionStatus === 'construction').length;
   // 待審核紀錄：Status = 'pending_review'
   const pendingLogsCount = logs.filter(l => l.status === 'pending_review').length;
+
+  // 2. 升級版統計：異常匯總
+  const allPendingIssues = useMemo(() => {
+    return logs.reduce((acc: any[], log) => {
+      if (log.issues && Array.isArray(log.issues)) {
+        const pending = log.issues
+          .filter((i: any) => i.status === 'pending')
+          .map(i => ({ ...i, projectName: log.project, logDate: log.date }));
+        return [...acc, ...pending];
+      }
+      return acc;
+    }, []);
+  }, [logs]);
+
+  const totalPendingIssues = allPendingIssues.length;
+  const topPendingIssues = allPendingIssues.slice(0, 3);
+
+  // 3. 專案健康度分析 (正常 vs 落後)
+  const healthStats = useMemo(() => {
+    let normal = 0;
+    let delayed = 0;
+
+    projects.forEach(project => {
+      // (A) 計算實際進度：取該專案最新日誌的進度
+      const pLogs = logs.filter(l => l.projectId === project.id);
+      let actual = 0;
+      if (pLogs.length > 0) {
+        const sorted = [...pLogs].sort((a, b) => {
+          const sA = String(a.date).replace(/\//g, '-');
+          const sB = String(b.date).replace(/\//g, '-');
+          return new Date(sB).getTime() - new Date(sA).getTime();
+        });
+        // ⚠️ 修正 TypeScript 類型錯誤：確保傳遞字串給 parseFloat
+        actual = parseFloat(String(sorted[0].actualProgress || '0')) || 0;
+      }
+
+      // (B) 計算預定進度：比對當前日期
+      let planned = 0;
+      if (project.scheduleData && project.scheduleData.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        const sortedShed = [...project.scheduleData].sort((a, b) => a.date.localeCompare(b.date));
+        for (let p of sortedShed) {
+          if (p.date <= today) planned = p.progress;
+          else break;
+        }
+      }
+
+      if (actual < planned) delayed++;
+      else normal++;
+    });
+
+    return { normal, delayed };
+  }, [projects, logs]);
 
   const navTo = (path: string) => {
     setMenuVisible(false);
@@ -213,16 +268,58 @@ export default function DashboardScreen() {
           </View>
         ))}
 
-        {/* Dashboard Widgets (Stats) - 僅管理員可見 */}
-        {isAdmin && (
-          <View style={styles.statsContainer}>
-            <View style={styles.statBox}>
-              <Text style={styles.statNumber}>{activeProjectsCount}</Text>
-              <Text style={styles.statLabel}>進行中專案</Text>
+        {/* --- 升級區塊：Dashboard Widgets --- */}
+
+        {/* (A) 異常警示專區 (只有在有問題時才顯示) */}
+        {totalPendingIssues > 0 && (
+          <View style={styles.alertSection}>
+            <View style={styles.alertHeader}>
+              <Ionicons name="warning" size={24} color="#FF4D4F" />
+              <Text style={styles.alertTitle}>待處理異常: {totalPendingIssues}</Text>
+              <TouchableOpacity onPress={() => router.push('/logs')}>
+                <Text style={styles.alertLink}>查看全部</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statNumber}>{pendingLogsCount}</Text>
-              <Text style={styles.statLabel}>待審核紀錄</Text>
+            <View style={styles.alertList}>
+              {topPendingIssues.map((issue, idx) => (
+                <View key={idx} style={styles.alertItem}>
+                  <Text style={styles.alertProject} numberOfLines={1}>{issue.projectName}</Text>
+                  <Text style={styles.alertContent} numberOfLines={1}>- {issue.content}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* (B) 專案健康度圖表 */}
+        {isAdmin && (
+          <View style={styles.dashboardCard}>
+            <Text style={styles.dashboardCardTitle}>專案健康度分佈</Text>
+            <PieChart
+              data={[
+                { name: '進度正常', population: healthStats.normal, color: '#52c41a', legendFontColor: '#7F7F7F', legendFontSize: 13 },
+                { name: '進度落後', population: healthStats.delayed, color: '#ff4d4f', legendFontColor: '#7F7F7F', legendFontSize: 13 }
+              ]}
+              width={Dimensions.get('window').width - 40}
+              height={180}
+              chartConfig={{
+                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+              }}
+              accessor="population"
+              backgroundColor="transparent"
+              paddingLeft="15"
+              absolute
+            />
+
+            <View style={styles.statsRow}>
+              <View style={styles.statBox}>
+                <Text style={styles.statNumber}>{activeProjectsCount}</Text>
+                <Text style={styles.statLabel}>施工中專案</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statNumber}>{pendingLogsCount}</Text>
+                <Text style={styles.statLabel}>待審核紀錄</Text>
+              </View>
             </View>
           </View>
         )}
@@ -583,5 +680,76 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  // --- 升級樣式 ---
+  alertSection: {
+    backgroundColor: '#FFF1F0',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#FFA39E',
+  },
+  alertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FF4D4F',
+    marginLeft: 8,
+    flex: 1,
+  },
+  alertLink: {
+    color: '#1890FF',
+    fontSize: 14,
+  },
+  alertList: {
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 8,
+    padding: 10,
+  },
+  alertItem: {
+    flexDirection: 'row',
+    marginBottom: 5,
+    alignItems: 'center',
+  },
+  alertProject: {
+    fontWeight: 'bold',
+    color: '#333',
+    width: 100,
+    fontSize: 13,
+  },
+  alertContent: {
+    color: '#666',
+    flex: 1,
+    fontSize: 13,
+  },
+  dashboardCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  dashboardCardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#002147',
+    marginBottom: 10,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 15,
   },
 });
