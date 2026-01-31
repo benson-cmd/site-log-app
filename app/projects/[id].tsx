@@ -599,15 +599,37 @@ export default function ProjectDetailScreen() {
 
         {/* Logs */}
         <Text style={[styles.cardTitle, { margin: 15 }]}>施工日誌 ({projectLogs.length})</Text>
-        {projectLogs.map(log => (
-          <TouchableOpacity key={log.id} style={styles.logCard} onPress={() => router.push('/logs')}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontWeight: 'bold' }}>{log.date}</Text>
-              {/* <Text style={{ fontSize: 12, color: '#999' }}>進度: {log.todayProgress || '-'}%</Text> */}
-            </View>
-            <Text numberOfLines={2} style={{ color: '#444', marginTop: 5 }}>{log.content}</Text>
-          </TouchableOpacity>
-        ))}
+        {projectLogs.map(log => {
+          const pendingCount = (log.issues || []).filter((i: any) => i.status === 'pending').length;
+
+          return (
+            <TouchableOpacity key={log.id} style={styles.logCard} onPress={() => router.push('/logs')}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontWeight: 'bold' }}>{log.date}</Text>
+                  {/* ✨ 異常警示標籤 */}
+                  {pendingCount > 0 && (
+                    <View style={{
+                      backgroundColor: '#FFE5E5',
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 4,
+                      marginLeft: 8,
+                      borderWidth: 1,
+                      borderColor: '#FF4D4F'
+                    }}>
+                      <Text style={{ color: '#FF4D4F', fontSize: 10, fontWeight: 'bold' }}>
+                        ⚠️ 待處理: {pendingCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                {/* <Text style={{ fontSize: 12, color: '#999' }}>進度: {log.todayProgress || '-'}%</Text> */}
+              </View>
+              <Text numberOfLines={2} style={{ color: '#444', marginTop: 5 }}>{log.content}</Text>
+            </TouchableOpacity>
+          );
+        })}
         <View style={{ height: 50 }} />
       </ScrollView>
 
