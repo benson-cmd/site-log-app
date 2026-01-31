@@ -423,6 +423,9 @@ export default function LogsScreen() {
     const statusColor = item.status === 'approved' ? '#4CAF50' : (isRejected ? '#F44336' : '#FF9800');
     const statusText = item.status === 'approved' ? '已核准' : (isRejected ? '已退回（請修正）' : (item.status === 'draft' ? '草稿' : '待審核'));
 
+    // ✨ 計算待處理數量
+    const pendingIssuesCount = (item.issues || []).filter((i: any) => i.status === 'pending').length;
+
     return (
       <View style={styles.card}>
         {/* Status Badge - 僅管理員或作者本人顯示 */}
@@ -433,10 +436,30 @@ export default function LogsScreen() {
         )}
 
         <View style={styles.cardHeader}>
-          <View style={styles.dateBadge}>
-            <Ionicons name="calendar-outline" size={16} color="#fff" />
-            <Text style={styles.dateText}>{item.date}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={styles.dateBadge}>
+              <Ionicons name="calendar-outline" size={16} color="#fff" />
+              <Text style={styles.dateText}>{item.date}</Text>
+            </View>
+
+            {/* ⚠️ 異常標籤 */}
+            {pendingIssuesCount > 0 && (
+              <View style={{
+                backgroundColor: '#FFE5E5',
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 4,
+                marginLeft: 8,
+                borderWidth: 1,
+                borderColor: '#FF4D4F'
+              }}>
+                <Text style={{ color: '#FF4D4F', fontSize: 10, fontWeight: 'bold' }}>
+                  ⚠️ 待處理: {pendingIssuesCount}
+                </Text>
+              </View>
+            )}
           </View>
+
           <View style={styles.weatherContainer}>
             <Text style={styles.weatherText}>{item.weather}</Text>
           </View>
