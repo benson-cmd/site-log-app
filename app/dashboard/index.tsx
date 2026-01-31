@@ -268,57 +268,71 @@ export default function DashboardScreen() {
           </View>
         ))}
 
-        {/* --- 升級區塊：Dashboard Widgets --- */}
+        {/* --- 升級區塊：Dashboard 戰情中心 --- */}
 
-        {/* (A) 異常警示專區 (只有在有問題時才顯示) */}
-        {totalPendingIssues > 0 && (
-          <View style={styles.alertSection}>
-            <View style={styles.alertHeader}>
-              <Ionicons name="warning" size={24} color="#FF4D4F" />
-              <Text style={styles.alertTitle}>待處理異常: {totalPendingIssues}</Text>
-              <TouchableOpacity onPress={() => router.push('/logs')}>
-                <Text style={styles.alertLink}>查看全部</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.alertList}>
-              {topPendingIssues.map((issue, idx) => (
-                <View key={idx} style={styles.alertItem}>
-                  <Text style={styles.alertProject} numberOfLines={1}>{issue.projectName}</Text>
-                  <Text style={styles.alertContent} numberOfLines={1}>- {issue.content}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* (B) 專案健康度圖表 */}
         {isAdmin && (
-          <View style={styles.dashboardCard}>
-            <Text style={styles.dashboardCardTitle}>專案健康度分佈</Text>
-            <PieChart
-              data={[
-                { name: '進度正常', population: healthStats.normal, color: '#52c41a', legendFontColor: '#7F7F7F', legendFontSize: 13 },
-                { name: '進度落後', population: healthStats.delayed, color: '#ff4d4f', legendFontColor: '#7F7F7F', legendFontSize: 13 }
-              ]}
-              width={Dimensions.get('window').width - 40}
-              height={180}
-              chartConfig={{
-                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-              }}
-              accessor="population"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
-            />
+          <View style={{ marginTop: 10, marginBottom: 20 }}>
+            <Text style={styles.sectionTitle}>專案進度總覽</Text>
 
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statNumber}>{activeProjectsCount}</Text>
-                <Text style={styles.statLabel}>施工中專案</Text>
+            <View style={styles.dashboardCard}>
+              {/* (B) 專案進度圖表 */}
+              <View style={{ alignItems: 'center' }}>
+                <PieChart
+                  data={[
+                    { name: '進度正常', population: healthStats.normal, color: '#52c41a', legendFontColor: '#7F7F7F', legendFontSize: 13 },
+                    { name: '進度落後', population: healthStats.delayed, color: '#ff4d4f', legendFontColor: '#7F7F7F', legendFontSize: 13 }
+                  ]}
+                  width={Dimensions.get('window').width - 80}
+                  height={180}
+                  chartConfig={{
+                    color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  }}
+                  accessor="population"
+                  backgroundColor="transparent"
+                  paddingLeft="15"
+                  absolute
+                />
               </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statNumber}>{pendingLogsCount}</Text>
-                <Text style={styles.statLabel}>待審核紀錄</Text>
+
+              {/* (A) 嵌入式異常警示 (合併在卡片內) */}
+              {totalPendingIssues > 0 && (
+                <View style={{
+                  marginTop: 16,
+                  backgroundColor: '#FFF1F0',
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: '#FFCCC7'
+                }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: '#CF1322', fontWeight: 'bold', fontSize: 16 }}>
+                      ⚠️ 待處理異常: {totalPendingIssues}
+                    </Text>
+                    <TouchableOpacity onPress={() => router.push('/logs')}>
+                      <Text style={{ color: '#1890FF', fontSize: 13 }}>查看全部</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 顯示前幾筆異常摘要 */}
+                  <View style={{ marginTop: 8 }}>
+                    {topPendingIssues.map((issue, idx) => (
+                      <Text key={idx} style={{ color: '#555', marginTop: 4, fontSize: 13 }}>
+                        • {issue.projectName} - {issue.content}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.statsRow}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statNumber}>{activeProjectsCount}</Text>
+                  <Text style={styles.statLabel}>施工中專案</Text>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statNumber}>{pendingLogsCount}</Text>
+                  <Text style={styles.statLabel}>待審核紀錄</Text>
+                </View>
               </View>
             </View>
           </View>
