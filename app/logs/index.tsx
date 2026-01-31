@@ -117,27 +117,25 @@ export default function LogsScreen() {
   const handleEditLog = (logItem: LogEntry) => {
     setEditingId(logItem.id);
 
-    // 處理日期
+    // 日期與進度處理 (保留原本修復好的邏輯)
     const safeDate = logItem.date ? String(logItem.date).replace(/\//g, '-') : '';
-
-    // ⚠️ 核心修復：把資料庫的 actualProgress 讀出來給表單
-    // 必須處理 undefined / null 的情況，避免當機
-    let safeProgress = '';
-    if (logItem.actualProgress !== undefined && logItem.actualProgress !== null) {
-      safeProgress = String(logItem.actualProgress);
-    }
+    const progressVal = (logItem.actualProgress !== undefined && logItem.actualProgress !== null)
+      ? String(logItem.actualProgress)
+      : '';
 
     setNewLog({
       ...logItem,
       projectId: logItem.projectId || '',
       date: safeDate,
-      todayProgress: safeProgress, // 這行決定了編輯視窗會不會空白
+      todayProgress: progressVal,
       weather: logItem.weather || '晴',
       content: logItem.content || '',
       labor: logItem.labor || [],
       machines: logItem.machines || [],
       photos: logItem.photos || [],
-      issues: logItem.issues || [] // 載入異常紀錄
+
+      // ⚠️ 關鍵修復：讀取資料庫的 issues，若無則給空陣列
+      issues: logItem.issues || []
     });
 
     setIsEditMode(true);
@@ -180,12 +178,10 @@ export default function LogsScreen() {
     if (newLog.date && newLog.project) {
       const targetProject = projects.find(p => p.name === newLog.project);
       if (targetProject?.scheduleData && targetProject.scheduleData.length > 0) {
-        // Find exact match or closest date
         const matchingPoint = targetProject.scheduleData.find(point => point.date === newLog.date);
         if (matchingPoint) {
           setNewLog(prev => ({ ...prev, plannedProgress: matchingPoint.progress }));
         } else {
-          // Find closest previous date
           const sortedData = [...targetProject.scheduleData].sort((a, b) => a.date.localeCompare(b.date));
           let closestProgress: number | undefined;
           for (const point of sortedData) {
@@ -204,17 +200,15 @@ export default function LogsScreen() {
   }, [newLog.date, newLog.project, projects]);
 
   const onSubmit = async () => {
-    // [網頁相容性修復] 1. 檢查專案 (嚴格檢查 undefined 或 null)
+    // 驗證邏輯
     if (!newLog.project) {
       toast.error('⚠️ 錯誤：請務必選擇「專案名稱」！');
-      return; // 強制中斷
+      return;
     }
-    // [網頁相容性修復] 2. 檢查內容 (過濾掉只打空白鍵的情況)
     if (!newLog.content || newLog.content.trim().length === 0) {
       toast.error('⚠️ 錯誤：請填寫「今日施工項目」！');
-      return; // 強制中斷
+      return;
     }
-
     if (!newLog.date || !newLog.weather) {
       toast.error('⚠️ 錯誤：請填寫完整日期與天氣！');
       return;
@@ -223,28 +217,23 @@ export default function LogsScreen() {
     try {
       setIsSubmitting(true);
 
-      // 1. Photo Upload Stage - 平行處理與偵錯
+      // 1. 照片上傳處理 (保留原本機制)
       const currentPhotos = newLog.photos || [];
       const totalPhotos = currentPhotos.length;
       setUploadProgress({ current: 0, total: totalPhotos });
 
-      console.log(`[DEBUG] 待處理照片共 ${totalPhotos} 張`);
-
       const uploadPromises = currentPhotos.map(async (photoUri, index) => {
-        // 如果是遠端網址則跳過
         const uriString = typeof photoUri === 'string' ? photoUri : (photoUri as any).uri;
         if (uriString && uriString.startsWith('http')) {
           setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
           return uriString;
         }
-
         try {
-          // [手術級修正] 確保傳給 uploadPhoto 的是「純網址字串」而非整個物件
           const remoteUrl = await uploadPhoto(typeof photoUri === 'object' ? (photoUri as any).uri : photoUri);
           setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
           return remoteUrl;
         } catch (err: any) {
-          throw new Error(`照片 [${index + 1}] 上傳失敗: ${err.message || 'Cloudinary 錯誤'}`);
+          throw new Error(`照片 [${index + 1}] 上傳失敗: ${err.message}`);
         }
       });
 
@@ -253,12 +242,18 @@ export default function LogsScreen() {
         const results = await Promise.all(uploadPromises);
         uploadedUrls = results.filter(url => typeof url === 'string' && url.startsWith('http'));
       } catch (uploadError: any) {
-        toast.error('照片上傳失敗: ' + uploadError.message);
+        toast.error(uploadError.message);
         setIsSubmitting(false);
         return;
       }
 
-      // 2. Data Sanitization (資料清洗)
+      // 2. 準備要寫入 Firestore 的資料物件
+      const targetProject = projects.find(p => p.name === newLog.project);
+      if (!targetProject) throw new Error('找不到指定的專案資料');
+
+      const submissionDate = String(newLog.date);
+
+      // 資料清洗
       const sanitizedMachines = (newLog.machines || []).map(m => ({
         id: m.id,
         name: m.name || '',
@@ -273,55 +268,49 @@ export default function LogsScreen() {
         work: m.work || ''
       }));
 
-      const targetProject = projects.find(p => p.name === newLog.project);
-      if (!targetProject) {
-        console.error('[DEBUG] 找不到與日誌對應的專案:', newLog.project);
-        throw new Error('找不到指定的專案資料');
-      }
+      // ⚠️ 核心修復：確保 issues 被寫入
+      const sanitizedIssues = (newLog.issues || []).map(i => ({
+        id: i.id,
+        content: i.content || '',
+        status: i.status || 'pending'
+      }));
 
-      const submissionDate = typeof newLog.date === 'string' ? newLog.date : new Date().toISOString().split('T')[0];
+      const logDataToSave = {
+        projectId: targetProject.id,
+        date: submissionDate,
+        actualProgress: newLog.todayProgress ? String(newLog.todayProgress) : '0',
+        weather: newLog.weather || '晴',
+        content: newLog.content || '',
+        labor: sanitizedLabor,
+        machines: sanitizedMachines,
+        photos: uploadedUrls,
+        issues: sanitizedIssues // ⚠️ 關鍵：存檔 issues
+      };
 
       if (isEditMode && editingId) {
-        const { todayProgress, ...logData } = newLog;
+        // 更新模式
         const updateData: Partial<LogEntry> = {
-          ...logData,
-          // ⚠️ 核心修復：將表單的 todayProgress 存入 actualProgress
-          actualProgress: newLog.todayProgress ? String(newLog.todayProgress) : '0',
-          projectId: targetProject.id,
-          machines: sanitizedMachines,
-          labor: sanitizedLabor,
-          date: submissionDate,
-          photos: uploadedUrls,
-          issues: newLog.issues || [],
+          ...logDataToSave,
           reporterId: newLog.reporterId || user?.uid,
           status: (newLog.status === 'rejected' || newLog.status === 'pending_review') ? 'pending_review' : newLog.status
         };
         const cleanUpdateData = JSON.parse(JSON.stringify(updateData));
         await updateLog(editingId, cleanUpdateData);
       } else {
+        // 新增模式
         const entry: Omit<LogEntry, 'id'> = {
-          date: submissionDate,
+          ...logDataToSave,
           project: newLog.project!,
-          projectId: targetProject.id,
-          // ⚠️ 核心修復：將表單的 todayProgress 存入 actualProgress
-          actualProgress: newLog.todayProgress ? String(newLog.todayProgress) : '0',
-          weather: newLog.weather || '晴',
-          content: newLog.content!,
-          machines: sanitizedMachines,
-          labor: sanitizedLabor,
           plannedProgress: newLog.plannedProgress,
           reporter: newLog.reporter || user?.name || '使用者',
           reporterId: user?.uid,
-          status: 'pending_review',
-          photos: uploadedUrls,
-          issues: newLog.issues || []
+          status: 'pending_review'
         };
         const cleanEntry = JSON.parse(JSON.stringify(entry));
         await addLog(cleanEntry);
       }
-      console.log('[DEBUG] Firestore 寫入成功');
 
-      // 4. Sync Project Progress
+      // 3. 進度同步
       if (newLog.todayProgress) {
         const progressVal = parseFloat(newLog.todayProgress);
         if (!isNaN(progressVal)) {
@@ -329,17 +318,13 @@ export default function LogsScreen() {
         }
       }
 
-      toast.success('✅ 儲存成功：施工日誌已提交且進度已同步。');
-
-      // 手術級修正：強制強迫重置並關閉
-      setNewLog(prev => ({ ...prev, photos: [] }));
+      toast.success('✅ 儲存成功：異常回報與進度已同步。');
       setAddModalVisible(false);
       resetForm();
 
-
     } catch (error: any) {
-      console.error('[DEBUG] 提交過程崩潰:', error);
-      toast.error('❌ 儲存失敗：' + (error.message || '系統發生未知錯誤'));
+      console.error('[DEBUG] 存檔過程崩潰:', error);
+      toast.error('❌ 儲存失敗：' + (error.message || '發生未知錯誤'));
     } finally {
       setIsSubmitting(false);
     }
