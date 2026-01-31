@@ -7,7 +7,7 @@ import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../src/lib/firebase';
 import { useProjects } from '../../context/ProjectContext';
 import { useUser } from '../../context/UserContext';
-import { useLogs, LogEntry, MachineItem, LaborItem } from '../../context/LogContext';
+import { useLogs, LogEntry, MachineItem, LaborItem, LogIssue } from '../../context/LogContext';
 import { toast } from 'sonner';
 
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -64,8 +64,9 @@ export default function LogsScreen() {
   };
 
   const [newLog, setNewLog] = useState<Partial<LogEntry> & { todayProgress?: string }>({
-    project: '', date: '', weather: '晴', content: '', machines: [], labor: [], reporter: '', photos: [], todayProgress: ''
+    project: '', date: '', weather: '晴', content: '', machines: [], labor: [], reporter: '', photos: [], todayProgress: '', issues: []
   });
+  const [currentIssueText, setCurrentIssueText] = useState('');
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
@@ -99,8 +100,10 @@ export default function LogsScreen() {
       labor: [],
       reporter: user?.name || '使用者',
       photos: [],
-      todayProgress: ''
+      todayProgress: '',
+      issues: []
     });
+    setCurrentIssueText('');
     setEditingId(null);
     setIsEditMode(false);
   };
@@ -133,11 +136,43 @@ export default function LogsScreen() {
       content: logItem.content || '',
       labor: logItem.labor || [],
       machines: logItem.machines || [],
-      photos: logItem.photos || []
+      photos: logItem.photos || [],
+      issues: logItem.issues || [] // 載入異常紀錄
     });
 
     setIsEditMode(true);
     setAddModalVisible(true);
+  };
+
+  // 異常與問題管理功能
+  const addIssue = () => {
+    if (!currentIssueText.trim()) return;
+    const newIssue: LogIssue = {
+      id: Date.now().toString(),
+      content: currentIssueText.trim(),
+      status: 'pending'
+    };
+    setNewLog(prev => ({
+      ...prev,
+      issues: [...(prev.issues || []), newIssue]
+    }));
+    setCurrentIssueText('');
+  };
+
+  const removeIssue = (id: string) => {
+    setNewLog(prev => ({
+      ...prev,
+      issues: prev.issues?.filter(i => i.id !== id)
+    }));
+  };
+
+  const toggleIssueStatus = (id: string) => {
+    setNewLog(prev => ({
+      ...prev,
+      issues: prev.issues?.map(i =>
+        i.id === id ? { ...i, status: i.status === 'pending' ? 'resolved' : 'pending' } : i
+      )
+    }));
   };
 
   // Auto-calculate Planned Progress from CSV when date or project changes
@@ -257,6 +292,7 @@ export default function LogsScreen() {
           labor: sanitizedLabor,
           date: submissionDate,
           photos: uploadedUrls,
+          issues: newLog.issues || [],
           reporterId: newLog.reporterId || user?.uid,
           status: (newLog.status === 'rejected' || newLog.status === 'pending_review') ? 'pending_review' : newLog.status
         };
@@ -277,7 +313,8 @@ export default function LogsScreen() {
           reporter: newLog.reporter || user?.name || '使用者',
           reporterId: user?.uid,
           status: 'pending_review',
-          photos: uploadedUrls
+          photos: uploadedUrls,
+          issues: newLog.issues || []
         };
         const cleanEntry = JSON.parse(JSON.stringify(entry));
         await addLog(cleanEntry);
@@ -815,6 +852,40 @@ export default function LogsScreen() {
                 </TouchableOpacity>
               </View>
 
+              <Text style={styles.inputLabel}>⚠️ 異常與問題回報</Text>
+              <View style={styles.issuesContainer}>
+                {newLog.issues && newLog.issues.length > 0 && newLog.issues.map((issue) => (
+                  <View key={issue.id} style={styles.issueRow}>
+                    <Text style={[styles.issueText, issue.status === 'resolved' && { textDecorationLine: 'line-through', color: '#999' }]}>
+                      {issue.content}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <TouchableOpacity
+                        onPress={() => toggleIssueStatus(issue.id)}
+                        style={[styles.statusToggleBtn, { backgroundColor: issue.status === 'resolved' ? '#4CAF50' : '#FF5252' }]}
+                      >
+                        <Text style={styles.statusToggleText}>{issue.status === 'resolved' ? '已排除' : '待處理'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => removeIssue(issue.id)} style={styles.issueDeleteBtn}>
+                        <Ionicons name="trash-outline" size={18} color="#999" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+
+                <View style={styles.addIssueRow}>
+                  <TextInput
+                    style={styles.addIssueInput}
+                    placeholder="輸入問題描述..."
+                    value={currentIssueText}
+                    onChangeText={setCurrentIssueText}
+                  />
+                  <TouchableOpacity style={styles.addIssueBtn} onPress={addIssue}>
+                    <Text style={styles.addIssueBtnText}>加入</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               <Text style={styles.inputLabel}>填寫人 (自動帶入)</Text>
               <TextInput style={[styles.input, { backgroundColor: '#eee' }]} value={newLog.reporter} editable={false} />
 
@@ -1102,6 +1173,70 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     marginLeft: 5
+  },
+
+  // 異常與問題回報樣式
+  issuesContainer: {
+    marginBottom: 15,
+    backgroundColor: '#F5F7FA',
+    borderRadius: 8,
+    padding: 10
+  },
+  issueRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0'
+  },
+  issueText: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+    marginRight: 10
+  },
+  statusToggleBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 8
+  },
+  statusToggleText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  issueDeleteBtn: {
+    padding: 4
+  },
+  addIssueRow: {
+    flexDirection: 'row',
+    marginTop: 5,
+    gap: 8
+  },
+  addIssueInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 14,
+    backgroundColor: '#fff'
+  },
+  addIssueBtn: {
+    backgroundColor: '#C69C6D',
+    paddingHorizontal: 15,
+    justifyContent: 'center',
+    borderRadius: 6
+  },
+  addIssueBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold'
   }
 });
 // 圖片預覽樣式 (由 Antigravity 手術級補丁加入)

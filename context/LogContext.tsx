@@ -17,6 +17,12 @@ export interface LaborItem {
   work?: string;          // 工作內容
 }
 
+export interface LogIssue {
+  id: string;
+  content: string;
+  status: 'pending' | 'resolved';
+}
+
 export interface LogEntry {
   id: string;
   date: string;
@@ -33,6 +39,7 @@ export interface LogEntry {
   notes?: string;         // 新增備註欄位
   reporterId?: string;    // 新增提交者 ID 用於權限控管
   actualProgress?: string | number; // 實際累計進度
+  issues?: LogIssue[];     // 異常與問題回報
 }
 
 interface LogContextType {
