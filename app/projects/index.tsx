@@ -200,6 +200,18 @@ export default function ProjectsScreen() {
     return isNaN(val) ? 0 : val;
   };
 
+  const getPendingIssuesCount = (projectLogs: any[]) => {
+    if (!projectLogs || projectLogs.length === 0) return 0;
+    let count = 0;
+    projectLogs.forEach(log => {
+      if (log.issues && Array.isArray(log.issues)) {
+        const pending = log.issues.filter((i: any) => i.status === 'pending');
+        count += pending.length;
+      }
+    });
+    return count;
+  };
+
   // Calc Planned Progress
   const getPlannedProgress = (project: Project) => {
     if (!project.scheduleData || project.scheduleData.length === 0) return 0;
@@ -444,7 +456,9 @@ export default function ProjectsScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: 15 }}
           renderItem={({ item }) => {
-            const displayProgress = calculateLatestProgress(logs.filter(l => l.projectId === item.id));
+            const projectLogs = logs.filter(l => l.projectId === item.id);
+            const displayProgress = calculateLatestProgress(projectLogs);
+            const pendingCount = getPendingIssuesCount(projectLogs);
             const actual = displayProgress;
             const planned = getPlannedProgress(item);
             const diff = actual - planned;
@@ -463,7 +477,28 @@ export default function ProjectsScreen() {
                       </TouchableOpacity>
                     )}
                   </View>
-                  <Text style={styles.projectTitle}>{item.name}</Text>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.projectTitle}>{item.name}</Text>
+                    {/* ⚠️ 異常警示燈：只有在有問題時才顯示 */}
+                    {pendingCount > 0 && (
+                      <View style={{
+                        backgroundColor: '#FFE5E5',
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 4,
+                        borderWidth: 1,
+                        borderColor: '#FF4D4F',
+                        flexDirection: 'row',
+                        alignItems: 'center'
+                      }}>
+                        <Text style={{ color: '#FF4D4F', fontSize: 12, fontWeight: 'bold' }}>
+                          ⚠️ 異常: {pendingCount}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
                   <Text style={styles.projectInfo}>📍 {item.address}</Text>
                   <Text style={styles.projectInfo}>💰 總價：${formatCurrency(item.currentContractAmount || item.contractAmount)}</Text>
 
