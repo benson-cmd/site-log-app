@@ -476,7 +476,13 @@ export default function ProjectDetailScreen() {
   };
 
   const openDocument = (doc: any) => {
-    import('expo-linking').then(Linking => { Linking.openURL(doc.url); });
+    if (Platform.OS === 'web') {
+      window.open(doc.url, '_blank');
+    } else {
+      import('expo-linking').then(Linking => {
+        Linking.openURL(doc.url);
+      });
+    }
   };
 
   if (!project) return null;
