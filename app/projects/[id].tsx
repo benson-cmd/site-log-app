@@ -473,8 +473,12 @@ export default function ProjectDetailScreen() {
           <View style={{ flexDirection: 'row' }}>
             {user?.role === 'admin' && (
               <>
-                <TouchableOpacity onPress={handleDelete} style={{ marginRight: 15 }}><Ionicons name="trash-outline" size={24" color="#FF6B6B" /></TouchableOpacity>
-                <TouchableOpacity onPress={handleEditPress}><Ionicons name="create-outline" size={24} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity onPress={handleDelete} style={{ marginRight: 15 }}>
+                  <Ionicons name="trash-outline" size={24} color="#FF6B6B" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleEditPress}>
+                  <Ionicons name="create-outline" size={24} color="#fff" />
+                </TouchableOpacity>
               </>
             )}
           </View>
@@ -622,6 +626,7 @@ const styles = StyleSheet.create({
   rowCenter: { flexDirection: 'row', alignItems: 'center' },
   dropdownBtn: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dropdownList: { position: 'absolute', top: 45, left: 0, right: 0, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, elevation: 5, zIndex: 9999 },
+  dropdownItem: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
   groupHeader: { fontSize: 13, color: '#999', backgroundColor: '#f0f0f0', padding: 5, marginTop: 20, fontWeight: 'bold' },
   deleteBtnFull: { backgroundColor: '#FF6B6B', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 20 },
   dateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 10 },
