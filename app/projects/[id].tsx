@@ -105,23 +105,27 @@ export default function ProjectDetailScreen() {
 
   // --- Metrics Calculation for Project Status Dashboard ---
   const projectMetrics = useMemo(() => {
-    if (!project) return { remainingDays: 0, plannedProgress: 0, actualProgress: 0, hasTodayLog: false, actualDisplay: '尚未更新', todayStr: new Date().toISOString().split('T')[0], diffElement: null };
+    // [核心修正] 強制使用本地時間 locks YYYY-MM-DD
+    const dateObj = new Date();
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
+    // Used for interpolation and remaining days (at 00:00:00)
+    const todayBase = new Date(year, dateObj.getMonth(), dateObj.getDate());
 
     // 1. Remaining Duration
     let remainingDays = 0;
     if (plannedCompletionDate !== '-') {
       const end = new Date(plannedCompletionDate);
-      remainingDays = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      remainingDays = Math.ceil((end.getTime() - todayBase.getTime()) / (1000 * 60 * 60 * 24));
     }
 
     // 2. Planned Progress (Today)
     let plannedProgress = 0;
     if (projectSchedule.length > 0) {
-      const todayTs = today.getTime();
+      const todayTs = todayBase.getTime();
       const schedule = [...projectSchedule].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const nextIdx = schedule.findIndex(s => new Date(s.date).getTime() >= todayTs);
       if (nextIdx === 0) {
@@ -141,10 +145,10 @@ export default function ProjectDetailScreen() {
 
     // 3. Strict Daily Actual Progress Check
     const todayLog = projectLogs.find(l => l.date === todayStr);
-    const actualProgress = todayLog ? parseFloat((todayLog as any).actualProgress || 0) : 0;
+    const actualProgress = todayLog ? parseFloat(String((todayLog as any).actualProgress || 0)) : 0;
     const hasTodayLog = !!todayLog;
 
-    // Gap Analysis
+    // Gap Analysis (Calculated ONLY if todayLog exists)
     let diffElement = null;
     if (hasTodayLog) {
       const diff = actualProgress - plannedProgress;

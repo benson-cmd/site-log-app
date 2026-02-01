@@ -180,23 +180,11 @@ export default function ProjectsScreen() {
     );
   };
 
-  // [強制替換] 專案進度計算邏輯
-  const calculateLatestProgress = (projectLogs: any[]) => {
+  // [強制修正] 嚴格當日進度讀取鎖定 (Enforce Strict Daily)
+  const getTodayProgress = (projectLogs: any[], todayStr: string) => {
     if (!projectLogs || projectLogs.length === 0) return 0;
-
-    // 1. 統一日期格式轉換 (處理 2026/01/01 與 2026-01-01)
-    const parseTime = (dateStr: any) => {
-      if (!dateStr) return 0;
-      const s = String(dateStr).replace(/\//g, '-');
-      return new Date(s).getTime();
-    };
-
-    // 2. 排序：時間戳記大者(新)排前面
-    const sorted = [...projectLogs].sort((a, b) => parseTime(b.date) - parseTime(a.date));
-
-    // 3. 取第一筆 (最新日期) 的數值
-    const latest = sorted[0];
-    const val = parseFloat(latest.actualProgress); // 確保讀取 actualProgress 欄位
+    const todayLog = projectLogs.find(log => log.date === todayStr);
+    const val = todayLog ? parseFloat(todayLog.actualProgress) : 0;
     return isNaN(val) ? 0 : val;
   };
 
@@ -215,7 +203,11 @@ export default function ProjectsScreen() {
   // Calc Planned Progress
   const getPlannedProgress = (project: Project) => {
     if (!project.scheduleData || project.scheduleData.length === 0) return 0;
-    const today = new Date().toISOString().split('T')[0];
+    const dateObj = new Date();
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
     let planned = 0;
     for (let p of project.scheduleData) {
       if (p.date <= today) {
@@ -456,10 +448,18 @@ export default function ProjectsScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: 15 }}
           renderItem={({ item }) => {
+            const dateObj = new Date();
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const todayStr = `${year}-${month}-${day}`;
+
             const projectLogs = logs.filter(l => l.projectId === item.id);
-            const displayProgress = calculateLatestProgress(projectLogs);
+            const todayLog = projectLogs.find(log => log.date === todayStr);
+            const actual = todayLog ? parseFloat(String(todayLog.actualProgress || 0)) : 0;
+            const hasTodayLog = !!todayLog;
+
             const pendingCount = getPendingIssuesCount(projectLogs);
-            const actual = displayProgress;
             const planned = getPlannedProgress(item);
             const diff = actual - planned;
             const isBehind = diff < 0;
@@ -480,7 +480,6 @@ export default function ProjectsScreen() {
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={styles.projectTitle}>{item.name}</Text>
-                    {/* ⚠️ 異常警示燈：只有在有問題時才顯示 */}
                     {pendingCount > 0 && (
                       <View style={{
                         backgroundColor: '#FFE5E5',
@@ -504,12 +503,22 @@ export default function ProjectsScreen() {
 
                   <View style={styles.progressSection}>
                     <View style={styles.progressLabels}>
-                      <Text style={styles.progressLabelText}>實際: <Text style={{ fontWeight: 'bold' }}>{actual}%</Text></Text>
+                      <Text style={styles.progressLabelText}>
+                        實際: <Text style={{ fontWeight: 'bold', color: hasTodayLog ? '#333' : '#FF4D4F' }}>
+                          {hasTodayLog ? `${actual}%` : '尚未更新'}
+                        </Text>
+                      </Text>
                       <Text style={styles.progressLabelText}>預定: <Text style={{ fontWeight: 'bold' }}>{planned}%</Text></Text>
-                      <Text style={[styles.progressStatus, { color: isBehind ? THEME.danger : THEME.success }]}>{isBehind ? `🔴 落後 ${Math.abs(diff).toFixed(1)}%` : `🟢 正常 +${diff.toFixed(1)}%`}</Text>
+                      {hasTodayLog ? (
+                        <Text style={[styles.progressStatus, { color: isBehind ? THEME.danger : THEME.success }]}>
+                          {isBehind ? `🔴 落後 ${Math.abs(diff).toFixed(1)}%` : `🟢 超前 +${diff.toFixed(1)}%`}
+                        </Text>
+                      ) : (
+                        <Text style={[styles.progressStatus, { color: '#999' }]}>--</Text>
+                      )}
                     </View>
                     <View style={styles.progressTrack}>
-                      <View style={[styles.progressBar, { width: `${Math.min(actual, 100)}%` }]} />
+                      <View style={[styles.progressBar, { width: `${Math.min(actual, 100)}%`, backgroundColor: hasTodayLog ? THEME.primary : '#eee' }]} />
                       <View style={[styles.plannedMarker, { left: `${Math.min(planned, 100)}%` }]} />
                     </View>
                   </View>
