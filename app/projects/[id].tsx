@@ -103,12 +103,13 @@ export default function ProjectDetailScreen() {
     return data;
   }, [project?.scheduleData, project?.startDate, plannedCompletionDate]);
 
-  // --- Metrics Calculation for Progress Dashboard ---
+  // --- Metrics Calculation for Project Status Dashboard ---
   const projectMetrics = useMemo(() => {
-    if (!project) return { remainingDays: 0, plannedProgress: 0, actualProgress: 0, hasActual: false };
+    if (!project) return { remainingDays: 0, plannedProgress: 0, actualProgress: 0, hasTodayLog: false, actualDisplay: '尚未更新', todayStr: new Date().toISOString().split('T')[0], diffElement: null };
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
 
     // 1. Remaining Duration
     let remainingDays = 0;
@@ -122,10 +123,7 @@ export default function ProjectDetailScreen() {
     if (projectSchedule.length > 0) {
       const todayTs = today.getTime();
       const schedule = [...projectSchedule].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-      // Find the segments for interpolation
       const nextIdx = schedule.findIndex(s => new Date(s.date).getTime() >= todayTs);
-
       if (nextIdx === 0) {
         plannedProgress = schedule[0].progress;
       } else if (nextIdx === -1) {
@@ -139,19 +137,35 @@ export default function ProjectDetailScreen() {
         plannedProgress = p1.progress + (p2.progress - p1.progress) * ratio;
       }
     }
+    plannedProgress = Math.round(plannedProgress * 10) / 10;
 
-    // 3. Actual Progress (Latest)
-    let actualProgress = 0;
-    if (projectLogs && projectLogs.length > 0) {
-      const latestWithProg = projectLogs.find(l => (l as any).actualProgress !== undefined);
-      actualProgress = latestWithProg ? parseFloat((latestWithProg as any).actualProgress) : 0;
+    // 3. Strict Daily Actual Progress Check
+    const todayLog = projectLogs.find(l => l.date === todayStr);
+    const actualProgress = todayLog ? parseFloat((todayLog as any).actualProgress || 0) : 0;
+    const hasTodayLog = !!todayLog;
+
+    // Gap Analysis
+    let diffElement = null;
+    if (hasTodayLog) {
+      const diff = actualProgress - plannedProgress;
+      const diffFix = diff.toFixed(1);
+      if (diff > 0) {
+        diffElement = <Text style={{ color: '#52c41a', fontSize: 11, marginTop: 4, fontWeight: 'bold' }}>▲ 超前 {diffFix}%</Text>;
+      } else if (diff < 0) {
+        diffElement = <Text style={{ color: '#ff4d4f', fontSize: 11, marginTop: 4, fontWeight: 'bold' }}>▼ 落後 {Math.abs(diff).toFixed(1)}%</Text>;
+      } else {
+        diffElement = <Text style={{ color: '#888', fontSize: 11, marginTop: 4 }}>- 持平 -</Text>;
+      }
     }
 
     return {
       remainingDays,
-      plannedProgress: Math.round(plannedProgress * 10) / 10,
+      plannedProgress,
       actualProgress: Math.round(actualProgress * 10) / 10,
-      hasActual: projectLogs && projectLogs.length > 0
+      hasTodayLog,
+      actualDisplay: hasTodayLog ? `${Math.round(actualProgress * 10) / 10}%` : '尚未更新',
+      todayStr,
+      diffElement
     };
   }, [project, projectSchedule, projectLogs, plannedCompletionDate]);
 
@@ -492,22 +506,44 @@ export default function ProjectDetailScreen() {
       <ScrollView style={styles.content}>
         {activeTab === 'progress' ? (
           <>
+            <View style={{ marginTop: 15, paddingHorizontal: 15 }}>
+              <Text style={styles.cardTitle}>專案狀態</Text>
+            </View>
             <View style={styles.metricsRow}>
               <View style={styles.metricItem}>
                 <Text style={styles.metricLabel}>剩餘工期</Text>
-                <Text style={[styles.metricValue, projectMetrics.remainingDays < 0 && { color: THEME.danger }]}>{projectMetrics.remainingDays} 天</Text>
+                <Text style={[styles.metricValue, projectMetrics.remainingDays < 0 && { color: THEME.danger }]}>
+                  {projectMetrics.remainingDays} 天
+                </Text>
               </View>
+
               <View style={styles.metricItem}>
                 <Text style={styles.metricLabel}>預定進度</Text>
                 <Text style={styles.metricValue}>{projectMetrics.plannedProgress}%</Text>
+                <Text style={{ fontSize: 9, color: '#999', marginTop: 2 }}>({projectMetrics.todayStr})</Text>
               </View>
+
               <View style={styles.metricItem}>
                 <Text style={styles.metricLabel}>實際進度</Text>
-                <Text style={styles.metricValue}>{projectMetrics.hasActual ? `${projectMetrics.actualProgress}%` : '尚未更新'}</Text>
+                <Text style={[
+                  styles.metricValue,
+                  !projectMetrics.hasTodayLog && { color: '#ff4d4f', fontSize: 13 }
+                ]}>
+                  {projectMetrics.actualDisplay}
+                </Text>
+                {projectMetrics.hasTodayLog && (
+                  <Text style={{ fontSize: 9, color: '#999', marginTop: 2 }}>({projectMetrics.todayStr})</Text>
+                )}
+                {projectMetrics.diffElement}
               </View>
+
               <View style={[styles.metricItem, { borderRightWidth: 0, flex: 1.2 }]}>
                 <Text style={styles.metricLabel}>執行狀態</Text>
-                <View style={styles.statusBadgeSmall}><Text style={styles.statusTextSmall}>{EXECUTION_STATUS_MAP[project.executionStatus || 'not_started']}</Text></View>
+                <View style={styles.statusBadgeSmall}>
+                  <Text style={styles.statusTextSmall}>
+                    {EXECUTION_STATUS_MAP[project.executionStatus || 'not_started']}
+                  </Text>
+                </View>
               </View>
             </View>
 
