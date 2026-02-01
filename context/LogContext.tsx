@@ -91,7 +91,8 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
       // 硬編碼 Cloudinary 設定
       formData.append('upload_preset', 'ml_default');
 
-      const response = await fetch('https://api.cloudinary.com/v1_1/df8uaeazt/image/upload', {
+      // [手術級修正] 使用 auto resource_type 支援 PDF 與其他檔案類型
+      const response = await fetch('https://api.cloudinary.com/v1_1/df8uaeazt/auto/upload', {
         method: 'POST',
         body: formData,
       });

@@ -109,8 +109,11 @@ export default function ProjectDetailScreen() {
   const [plannedData, setPlannedData] = useState<number[]>([0]);
   const [actualData, setActualData] = useState<(number | null)[]>([0]);
   const [chartLabels, setChartLabels] = useState<string[]>(['Start']);
+  const [activeTab, setActiveTab] = useState<'progress' | 'info'>('progress');
 
-  // Computed Schedule Data (Source of Truth for Chart)
+  // Documents Section States
+  const [isDocModalVisible, setDocModalVisible] = useState(false);
+  const [docForm, setDocForm] = useState({ title: '', file: null as any, uploading: false });
   const projectSchedule = useMemo(() => {
     let data: SchedulePoint[] = [];
     if (project?.scheduleData && project.scheduleData.length > 0) {
@@ -448,6 +451,57 @@ export default function ProjectDetailScreen() {
     } catch (e) { Alert.alert('Error', 'Import failed'); }
   };
 
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'application/pdf'],
+        copyToCacheDirectory: true
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setDocForm(prev => ({ ...prev, file: result.assets[0] }));
+      }
+    } catch (err) {
+      console.error('Pick document error:', err);
+    }
+  };
+
+  // Wait, I already have useLogs hook:
+  const { uploadPhoto } = useLogs();
+
+  const handleSaveDocument = async () => {
+    if (!docForm.title || !docForm.file || !id || !project) return;
+    setDocForm(prev => ({ ...prev, uploading: true }));
+    try {
+      const url = await uploadPhoto(docForm.file.uri);
+      const fileType = docForm.file.mimeType?.includes('pdf') || docForm.file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image';
+
+      const newDoc = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: docForm.title,
+        url: url,
+        type: fileType,
+        createdAt: new Date().toISOString()
+      };
+
+      await updateProject(id as string, {
+        documents: [...(project.documents || []), newDoc]
+      });
+      setDocModalVisible(false);
+      setDocForm({ title: '', file: null, uploading: false });
+      Alert.alert('成功', '文件已上傳');
+    } catch (err: any) {
+      Alert.alert('失敗', err.message);
+    } finally {
+      setDocForm(prev => ({ ...prev, uploading: false }));
+    }
+  };
+
+  const openDocument = (doc: any) => {
+    import('expo-linking').then(Linking => {
+      Linking.openURL(doc.url);
+    });
+  };
+
   if (!project) return null;
 
   return (
@@ -467,171 +521,276 @@ export default function ProjectDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'progress' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('progress')}
+          >
+            <Text style={[styles.tabText, activeTab === 'progress' && styles.tabTextActive]}>施工進度</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'info' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('info')}
+          >
+            <Text style={[styles.tabText, activeTab === 'info' && styles.tabTextActive]}>專案資訊</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
 
       <ScrollView style={styles.content}>
-
-        {/* Basic Info Card - PRECISE ALIGNMENT */}
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.cardTitle}>基本資訊</Text>
-            <View style={[styles.statusBadge, { zIndex: 1 }]}><Text style={styles.statusText}>{EXECUTION_STATUS_MAP[project.executionStatus || 'not_started']}</Text></View>
-          </View>
-
-          <View style={styles.infoRow}><Ionicons name="location-outline" size={18} color="#666" /><Text style={styles.infoText}>{project.address || '-'}</Text></View>
-          <View style={styles.infoRow}><Ionicons name="person-outline" size={18} color="#666" /><Text style={styles.infoText}>主任: {project.manager || '-'}</Text></View>
-          <View style={styles.divider} />
-
-          <View style={styles.infoRow}><Text style={styles.labelCol}>契約工期:</Text><Text style={styles.valCol}>{project.contractDuration} 天</Text></View>
-          <View style={styles.infoRow}><Text style={styles.labelCol}>累計展延工期:</Text><Text style={styles.valCol}>{totalExtensionDays} 天</Text></View>
-          <View style={styles.divider} />
-
-          <View style={styles.infoRow}><Text style={styles.labelCol}>原始總價:</Text><Text style={styles.valCol}>${formatCurrency(project.contractAmount)}</Text></View>
-          <View style={styles.infoRow}><Text style={[styles.labelCol, { color: THEME.primary, fontWeight: 'bold' }]}>變更(擴充)後總價:</Text><Text style={[styles.valCol, { color: THEME.primary, fontWeight: 'bold' }]}>${formatCurrency(currentTotalAmount)}</Text></View>
-        </View>
-
-        {/* S-Curve Chart */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>專案進度 S-Curve</Text>
-          {chartLabels.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <LineChart
-                data={{
-                  labels: chartLabels.length > 6 ?
-                    chartLabels.filter((_, i) => i % Math.ceil(chartLabels.length / 6) === 0) :
-                    chartLabels,
-                  datasets: [
-                    {
-                      data: plannedData,
-                      color: (opacity = 1) => `rgba(0, 0, 255, ${opacity})`, // Blue (Planned)
-                      strokeWidth: 2,
-                      withDots: false,
-                    },
-                    {
-                      data: actualData as number[], // Cast to allow nulls (library supports it, typings might be strict)
-                      color: (opacity = 1) => `rgba(255, 0, 0, ${opacity})`, // Red (Actual)
-                      strokeWidth: 2,
-                      withDots: true,
-                    }
-                  ],
-                  legend: ["預定", "實際"]
-                }}
-                width={Dimensions.get("window").width - 60} // Adjust width freely
-                height={220}
-                yAxisSuffix="%"
-                chartConfig={{
-                  backgroundColor: "#ffffff",
-                  backgroundGradientFrom: "#ffffff",
-                  backgroundGradientTo: "#ffffff",
-                  decimalPlaces: 0,
-                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                  labelColor: (opacity = 1) => `rgba(51, 51, 51, ${opacity})`,
-                  style: { borderRadius: 16 },
-                  propsForDots: { r: "4", strokeWidth: "2", stroke: "#ffa726" }
-                }}
-                bezier
-                style={{ marginVertical: 8, borderRadius: 16 }}
-              />
-            </ScrollView>
-          )}
-
-          <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end' }}>
-            <TouchableOpacity onPress={handleImportPlannedCSV} style={styles.smallBtn}>
-              <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
-              <Text style={{ color: '#fff', marginLeft: 5, fontSize: 12 }}>匯入預定進度</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Important Dates Card - PRECISE ALIGNMENT */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>重要日期</Text>
-          <View style={styles.rowBetween}><Text style={styles.dateLabel}>決標日期:</Text><Text style={styles.dateVal}>{project.awardDate || '-'}</Text></View>
-          <View style={styles.rowBetween}><Text style={styles.dateLabel}>開工日:</Text><Text style={styles.dateVal}>{project.startDate || '-'}</Text></View>
-          <View style={[styles.rowBetween, { backgroundColor: '#E3F2FD', padding: 5, borderRadius: 4, marginVertical: 5 }]}><Text style={{ color: '#002147', fontWeight: 'bold' }}>預定竣工日:</Text><Text style={{ color: '#002147', fontWeight: 'bold' }}>{plannedCompletionDate}</Text></View>
-          <View style={styles.rowBetween}><Text style={styles.dateLabel}>實際竣工日:</Text><Text style={styles.dateVal}>{project.actualCompletionDate || '-'}</Text></View>
-          <View style={styles.divider} />
-          <View style={styles.rowBetween}><Text style={styles.dateLabel}>驗收日期:</Text><Text style={styles.dateVal}>{project.inspectionDate || '-'}</Text></View>
-          <View style={styles.rowBetween}><Text style={styles.dateLabel}>驗收合格:</Text><Text style={styles.dateVal}>{project.inspectionPassedDate || '-'}</Text></View>
-        </View>
-
-        {/* Extensions List */}
-        {project.extensions && project.extensions.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>展延記錄</Text>
-            {project.extensions.map((ext, i) => (
-              <View key={i} style={styles.logItem}>
-                <Text style={{ fontWeight: 'bold' }}>{ext.date} (文號: {ext.docNumber})</Text>
-                <Text>理由: {ext.reason}</Text>
-                <Text style={{ color: THEME.primary, fontWeight: 'bold', marginTop: 2 }}>+ {ext.days} 天</Text>
+        {activeTab === 'progress' ? (
+          <>
+            {/* Basic Info Card - Minimal version for progress tab */}
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.cardTitle}>狀態總覽</Text>
+                <View style={styles.statusBadge}><Text style={styles.statusText}>{EXECUTION_STATUS_MAP[project.executionStatus || 'not_started']}</Text></View>
               </View>
-            ))}
-          </View>
-        )}
-
-        {/* Change Designs */}
-        {(project.changeDesigns?.length || 0) > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>變更設計</Text>
-            {project.changeDesigns?.map((cd, i) => (
-              <View key={i} style={styles.logItem}>
-                <Text style={{ fontWeight: 'bold' }}>第{cd.count}次 ({cd.date})</Text>
-                <Text>新總價: ${formatCurrency(cd.newTotalAmount)}</Text>
-                <Text style={{ color: '#666' }}>{cd.reason}</Text>
+              <View style={styles.infoRow}>
+                <Text style={styles.labelCol}>預定竣工:</Text>
+                <Text style={styles.valCol}>{plannedCompletionDate}</Text>
               </View>
-            ))}
-          </View>
-        )}
+            </View>
 
-        {/* Expansions */}
-        {(project.subsequentExpansions?.length || 0) > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>後續擴充</Text>
-            {project.subsequentExpansions?.map((se, i) => (
-              <View key={i} style={styles.logItem}>
-                <Text style={{ fontWeight: 'bold' }}>擴充{se.count} ({se.date})</Text>
-                <Text>追加: +${formatCurrency(se.amount)}</Text>
-                <Text style={{ color: '#666' }}>{se.reason}</Text>
+            {/* S-Curve Chart */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>專案進度 S-Curve</Text>
+              {chartLabels.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <LineChart
+                    data={{
+                      labels: chartLabels.length > 6 ?
+                        chartLabels.filter((_, i) => i % Math.ceil(chartLabels.length / 6) === 0) :
+                        chartLabels,
+                      datasets: [
+                        {
+                          data: plannedData,
+                          color: (opacity = 1) => `rgba(0, 0, 255, ${opacity})`, // Blue (Planned)
+                          strokeWidth: 2,
+                          withDots: false,
+                        },
+                        {
+                          data: actualData as number[], // Cast to allow nulls (library supports it, typings might be strict)
+                          color: (opacity = 1) => `rgba(255, 0, 0, ${opacity})`, // Red (Actual)
+                          strokeWidth: 2,
+                          withDots: true,
+                        }
+                      ],
+                      legend: ["預定", "實際"]
+                    }}
+                    width={Dimensions.get("window").width - 60} // Adjust width freely
+                    height={220}
+                    yAxisSuffix="%"
+                    chartConfig={{
+                      backgroundColor: "#ffffff",
+                      backgroundGradientFrom: "#ffffff",
+                      backgroundGradientTo: "#ffffff",
+                      decimalPlaces: 0,
+                      color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                      labelColor: (opacity = 1) => `rgba(51, 51, 51, ${opacity})`,
+                      style: { borderRadius: 16 },
+                      propsForDots: { r: "4", strokeWidth: "2", stroke: "#ffa726" }
+                    }}
+                    bezier
+                    style={{ marginVertical: 8, borderRadius: 16 }}
+                  />
+                </ScrollView>
+              )}
+
+              <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <TouchableOpacity onPress={handleImportPlannedCSV} style={styles.smallBtn}>
+                  <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
+                  <Text style={{ color: '#fff', marginLeft: 5, fontSize: 12 }}>匯入預定進度</Text>
+                </TouchableOpacity>
               </View>
-            ))}
-          </View>
-        )}
+            </View>
 
-        {/* Logs */}
-        <Text style={[styles.cardTitle, { margin: 15 }]}>施工日誌 ({projectLogs.length})</Text>
-        {projectLogs.map(log => {
-          const pendingCount = (log.issues || []).filter((i: any) => i.status === 'pending').length;
+            {/* Important Dates Card - PRECISE ALIGNMENT */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>重要日期</Text>
+              <View style={styles.rowBetween}><Text style={styles.dateLabel}>決標日期:</Text><Text style={styles.dateVal}>{project.awardDate || '-'}</Text></View>
+              <View style={styles.rowBetween}><Text style={styles.dateLabel}>開工日:</Text><Text style={styles.dateVal}>{project.startDate || '-'}</Text></View>
+              <View style={[styles.rowBetween, { backgroundColor: '#E3F2FD', padding: 5, borderRadius: 4, marginVertical: 5 }]}><Text style={{ color: '#002147', fontWeight: 'bold' }}>預定竣工日:</Text><Text style={{ color: '#002147', fontWeight: 'bold' }}>{plannedCompletionDate}</Text></View>
+              <View style={styles.rowBetween}><Text style={styles.dateLabel}>實際竣工日:</Text><Text style={styles.dateVal}>{project.actualCompletionDate || '-'}</Text></View>
+              <View style={styles.divider} />
+              <View style={styles.rowBetween}><Text style={styles.dateLabel}>驗收日期:</Text><Text style={styles.dateVal}>{project.inspectionDate || '-'}</Text></View>
+              <View style={styles.rowBetween}><Text style={styles.dateLabel}>驗收合格:</Text><Text style={styles.dateVal}>{project.inspectionPassedDate || '-'}</Text></View>
+            </View>
 
-          return (
-            <TouchableOpacity key={log.id} style={styles.logCard} onPress={() => router.push('/logs')}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontWeight: 'bold' }}>{log.date}</Text>
-                  {/* ✨ 異常警示標籤 */}
-                  {pendingCount > 0 && (
-                    <View style={{
-                      backgroundColor: '#FFE5E5',
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 4,
-                      marginLeft: 8,
-                      borderWidth: 1,
-                      borderColor: '#FF4D4F'
-                    }}>
-                      <Text style={{ color: '#FF4D4F', fontSize: 10, fontWeight: 'bold' }}>
-                        ⚠️ 待處理: {pendingCount}
-                      </Text>
+            {/* Extensions List */}
+            {project.extensions && project.extensions.length > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>展延記錄</Text>
+                {project.extensions.map((ext, i) => (
+                  <View key={i} style={styles.logItem}>
+                    <Text style={{ fontWeight: 'bold' }}>{ext.date} (文號: {ext.docNumber})</Text>
+                    <Text>理由: {ext.reason}</Text>
+                    <Text style={{ color: THEME.primary, fontWeight: 'bold', marginTop: 2 }}>+ {ext.days} 天</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Change Designs */}
+            {(project.changeDesigns?.length || 0) > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>變更設計</Text>
+                {project.changeDesigns?.map((cd, i) => (
+                  <View key={i} style={styles.logItem}>
+                    <Text style={{ fontWeight: 'bold' }}>第{cd.count}次 ({cd.date})</Text>
+                    <Text>新總價: ${formatCurrency(cd.newTotalAmount)}</Text>
+                    <Text style={{ color: '#666' }}>{cd.reason}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Expansions */}
+            {(project.subsequentExpansions?.length || 0) > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>後續擴充</Text>
+                {project.subsequentExpansions?.map((se, i) => (
+                  <View key={i} style={styles.logItem}>
+                    <Text style={{ fontWeight: 'bold' }}>擴充{se.count} ({se.date})</Text>
+                    <Text>追加: +${formatCurrency(se.amount)}</Text>
+                    <Text style={{ color: '#666' }}>{se.reason}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Logs */}
+            <Text style={[styles.cardTitle, { margin: 15 }]}>施工日誌 ({projectLogs.length})</Text>
+            {projectLogs.map(log => {
+              const pendingCount = (log.issues || []).filter((i: any) => i.status === 'pending').length;
+
+              return (
+                <TouchableOpacity key={log.id} style={styles.logCard} onPress={() => router.push('/logs')}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ fontWeight: 'bold' }}>{log.date}</Text>
+                      {/* ✨ 異常警示標籤 */}
+                      {pendingCount > 0 && (
+                        <View style={{
+                          backgroundColor: '#FFE5E5',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 4,
+                          marginLeft: 8,
+                          borderWidth: 1,
+                          borderColor: '#FF4D4F'
+                        }}>
+                          <Text style={{ color: '#FF4D4F', fontSize: 10, fontWeight: 'bold' }}>
+                            ⚠️ 待處理: {pendingCount}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
-                {/* <Text style={{ fontSize: 12, color: '#999' }}>進度: {log.todayProgress || '-'}%</Text> */}
+                    {/* <Text style={{ fontSize: 12, color: '#999' }}>進度: {log.todayProgress || '-'}%</Text> */}
+                  </View>
+                  <Text numberOfLines={2} style={{ color: '#444', marginTop: 5 }}>{log.content}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            <View style={{ height: 50 }} />
+          </>
+        ) : (
+          <>
+            {/* Tab: Info - Project Description and Document Management */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>專案詳情</Text>
+              <View style={styles.infoRow}><Ionicons name="location-outline" size={18} color="#666" /><Text style={styles.infoText}>{project.address || '-'}</Text></View>
+              <View style={styles.infoRow}><Ionicons name="person-outline" size={18} color="#666" /><Text style={styles.infoText}>主任: {project.manager || '-'}</Text></View>
+              {project.description && <Text style={styles.descriptionText}>{project.description}</Text>}
+
+              <View style={styles.divider} />
+              <View style={styles.infoRow}><Text style={styles.labelCol}>原始總價:</Text><Text style={styles.valCol}>${formatCurrency(project.contractAmount)}</Text></View>
+              <View style={styles.infoRow}><Text style={styles.labelCol}>變更後總價:</Text><Text style={styles.valCol}>${formatCurrency(currentTotalAmount)}</Text></View>
+              <View style={styles.infoRow}><Text style={styles.labelCol}>決標日期:</Text><Text style={styles.valCol}>{project.awardDate || '-'}</Text></View>
+            </View>
+
+            {/* Document Management Section */}
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.cardTitle}>📂 契約與施工圖說</Text>
+                {user?.role === 'admin' && (
+                  <TouchableOpacity style={styles.addSmallBtn} onPress={() => setDocModalVisible(true)}>
+                    <Ionicons name="cloud-upload" size={16} color="#fff" />
+                    <Text style={{ color: '#fff', marginLeft: 4, fontWeight: 'bold' }}>上傳</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <Text numberOfLines={2} style={{ color: '#444', marginTop: 5 }}>{log.content}</Text>
-            </TouchableOpacity>
-          );
-        })}
-        <View style={{ height: 50 }} />
+
+              <View style={{ marginTop: 15 }}>
+                {(project.documents || []).length === 0 ? (
+                  <Text style={{ color: '#999', textAlign: 'center', padding: 20 }}>尚無上傳文件</Text>
+                ) : (
+                  project.documents?.map(doc => (
+                    <TouchableOpacity key={doc.id} style={styles.docItem} onPress={() => openDocument(doc)}>
+                      <View style={styles.docIcon}>
+                        <Ionicons
+                          name={doc.type === 'pdf' ? 'document-text' : 'image'}
+                          size={24}
+                          color={doc.type === 'pdf' ? '#FF4D4F' : '#1890FF'}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.docTitle} numberOfLines={1}>{doc.title}</Text>
+                        <Text style={styles.docMeta}>{doc.createdAt?.split('T')[0]} · {doc.type.toUpperCase()}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#ccc" />
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            </View>
+            <View style={{ height: 50 }} />
+          </>
+        )}
       </ScrollView>
+
+      {/* Document Upload Modal */}
+      <Modal visible={isDocModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.docModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold' }}>上傳文件與圖說</Text>
+              <TouchableOpacity onPress={() => setDocModalVisible(false)}><Ionicons name="close" size={26} /></TouchableOpacity>
+            </View>
+
+            <View style={{ padding: 20 }}>
+              <Text style={styles.label}>文件名稱</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例如：施工契約、結構圖..."
+                value={docForm.title}
+                onChangeText={t => setDocForm({ ...docForm, title: t })}
+              />
+
+              <TouchableOpacity style={styles.filePickerBtn} onPress={handlePickDocument}>
+                <Ionicons name={docForm.file ? "checkmark-circle" : "document-attach-outline"} size={22} color={docForm.file ? "#52c41a" : "#666"} />
+                <Text style={{ marginLeft: 10, color: '#333' }}>
+                  {docForm.file ? docForm.file.name : "選取檔案 (圖片或 PDF)"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.submitBtnFull, (docForm.uploading || !docForm.file) && { backgroundColor: '#ccc' }]}
+                onPress={handleSaveDocument}
+                disabled={docForm.uploading || !docForm.file}
+              >
+                {docForm.uploading ? (
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>上傳中...</Text>
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>確認上傳</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Edit Modal */}
       <Modal visible={isEditModalVisible} animationType="slide">
@@ -832,4 +991,108 @@ const styles = StyleSheet.create({
   dateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 10 },
   dateBtnText: { color: '#333' },
   smallBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
+  // Tab Styles
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: THEME.headerBg,
+    paddingHorizontal: 15,
+    paddingBottom: 10
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent'
+  },
+  tabBtnActive: {
+    borderBottomColor: THEME.primary
+  },
+  tabText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: 'bold',
+    fontSize: 15
+  },
+  tabTextActive: {
+    color: '#fff'
+  },
+  descriptionText: {
+    color: '#555',
+    lineHeight: 20,
+    marginTop: 10,
+    fontSize: 14
+  },
+  addSmallBtn: {
+    backgroundColor: THEME.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6
+  },
+  docItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FB',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#eee'
+  },
+  docIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2
+  },
+  docTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333'
+  },
+  docMeta: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2
+  },
+  filePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F7FA',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    marginVertical: 15
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end'
+  },
+  docModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    minHeight: '40%',
+    paddingBottom: 40
+  },
+  submitBtnFull: {
+    backgroundColor: THEME.primary,
+    paddingVertical: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 10
+  }
 });

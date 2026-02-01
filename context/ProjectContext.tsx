@@ -34,6 +34,14 @@ export interface SchedulePoint {
   progress: number;
 }
 
+export interface ProjectDocument {
+  id: string;
+  title: string;
+  url: string;
+  type: string; // 'image' | 'pdf' 等
+  createdAt: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -57,12 +65,17 @@ export interface Project {
   scheduleData?: SchedulePoint[];
   currentActualProgress?: number;
 
+  // Documents
+  documents?: ProjectDocument[];
+  description?: string; // 專案簡介
+
   // Dates
   awardDate?: string;
   actualCompletionDate?: string;
   inspectionDate?: string;
   reinspectionDate?: string;
   inspectionPassedDate?: string;
+  createdAt?: string;
 }
 
 interface ProjectContextType {
