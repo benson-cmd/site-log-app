@@ -583,13 +583,152 @@ export default function ProjectDetailScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={isDocModalVisible} animationType="slide" transparent><View style={styles.modalOverlay}><View style={styles.docModalContent}><View style={styles.modalHeader}><Text style={{ fontSize: 18, fontWeight: 'bold' }}>上傳文件與圖說</Text><TouchableOpacity onPress={() => setDocModalVisible(false)}><Ionicons name="close" size={26} /></TouchableOpacity></View><View style={{ padding: 20 }}><Text style={styles.label}>文件名稱</Text><TextInput style={styles.input} placeholder="例如：施工契約、結構圖..." value={docForm.title} onChangeText={t => setDocForm({ ...docForm, title: t })} /><TouchableOpacity style={styles.filePickerBtn} onPress={handlePickDocument}><Ionicons name={docForm.file ? "checkmark-circle" : "document-attach-outline"} size={22} color={docForm.file ? "#52c41a" : "#666"} /><Text style={{ marginLeft: 10, color: '#333' }}>{docForm.file ? docForm.file.name : "選取檔案 (圖片或 PDF)"}</Text></TouchableOpacity><TouchableOpacity style={[styles.submitBtnFull, (docForm.uploading || !docForm.file) && { backgroundColor: '#ccc' }]} onPress={handleSaveDocument} disabled={docForm.uploading || !docForm.file}>{docForm.uploading ? <Text style={{ color: '#fff', fontWeight: 'bold' }}>上傳中...</Text> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>確認上傳</Text>}</TouchableOpacity></View></View></View></Modal>
+      <Modal visible={isDocModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.docModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold' }}>上傳文件與圖說</Text>
+              <TouchableOpacity onPress={() => setDocModalVisible(false)}>
+                <Ionicons name="close" size={26} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 20 }}>
+              <Text style={styles.label}>文件名稱</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例如：施工契約、結構圖..."
+                value={docForm.title}
+                onChangeText={t => setDocForm({ ...docForm, title: t })}
+              />
+              <TouchableOpacity style={styles.filePickerBtn} onPress={handlePickDocument}>
+                <Ionicons
+                  name={docForm.file ? "checkmark-circle" : "document-attach-outline"}
+                  size={22}
+                  color={docForm.file ? "#52c41a" : "#666"}
+                />
+                <Text style={{ marginLeft: 10, color: '#333' }}>
+                  {docForm.file ? docForm.file.name : "選取檔案 (圖片或 PDF)"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitBtnFull, (docForm.uploading || !docForm.file) && { backgroundColor: '#ccc' }]}
+                onPress={handleSaveDocument}
+                disabled={docForm.uploading || !docForm.file}
+              >
+                {docForm.uploading ? (
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>上傳中...</Text>
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>確認上傳</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={isEditModalVisible} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-          <View style={styles.modalHeader}><TouchableOpacity onPress={() => setEditModalVisible(false)}><Ionicons name="close" size={28} color="#333" /></TouchableOpacity><Text style={{ fontSize: 18, fontWeight: 'bold' }}>編輯專案</Text><TouchableOpacity onPress={handleSave}><Text style={{ color: THEME.primary, fontWeight: 'bold', fontSize: 16 }}>儲存</Text></TouchableOpacity></View>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}><ScrollView style={{ flex: 1, padding: 20 }}><Text style={styles.label}>專案名稱</Text><TextInput style={styles.input} value={editProject.name} onChangeText={t => setEditProject({ ...editProject, name: t })} /><Text style={styles.label}>專案地址</Text><TextInput style={styles.input} value={editProject.address} onChangeText={t => setEditProject({ ...editProject, address: t })} /><View style={[styles.row, { zIndex: 3000 }]}><View style={{ flex: 1, marginRight: 10 }}><Text style={styles.label}>工地主任</Text><TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowManagerPicker(!showManagerPicker)}><Text>{editProject.manager || '請選擇'}</Text><Ionicons name="chevron-down" size={20} /></TouchableOpacity>{showManagerPicker && <View style={styles.dropdownList}>{managers.map(m => <TouchableOpacity key={m} style={styles.dropdownItem} onPress={() => { setEditProject({ ...editProject, manager: m }); setShowManagerPicker(false) }}><Text>{m}</Text></TouchableOpacity>)}</View>}</View><View style={{ flex: 1 }}><Text style={styles.label}>執行狀態</Text><TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowStatusPicker(!showStatusPicker)}><Text>{EXECUTION_STATUS_MAP[editProject.executionStatus || 'not_started']}</Text><Ionicons name="chevron-down" size={20} /></TouchableOpacity>{showStatusPicker && <View style={styles.dropdownList}>{EXECUTION_STATUS_OPTIONS.map(s => <TouchableOpacity key={s} style={styles.dropdownItem} onPress={() => { setEditProject({ ...editProject, executionStatus: s as any }); setShowStatusPicker(false) }}><Text>{EXECUTION_STATUS_MAP[s]}</Text></TouchableOpacity>)}</View>}</View></View><Text style={styles.groupHeader}>時程</Text><View style={styles.row}><View style={{ flex: 1, marginRight: 5 }}><Text style={styles.label}>決標日期</Text>{renderDateInput('award', editProject.awardDate || '', '日期')}</View><View style={{ flex: 1 }}><Text style={styles.label}>開工日期</Text>{renderDateInput('start', editProject.startDate || '', '日期')}</View></View><Text style={styles.label}>契約工期 (天)</Text><TextInput style={styles.input} keyboardType="number-pad" value={editProject.contractDuration?.toString()} onChangeText={t => setEditProject({ ...editProject, contractDuration: parseInt(t) || 0 })} /><View style={{ height: 50 }} />{user?.role === 'admin' && <TouchableOpacity onPress={handleDelete} style={styles.deleteBtnFull}><Text style={{ color: '#fff', fontWeight: 'bold' }}>刪除此專案</Text></TouchableOpacity>}<View style={{ height: 30 }} /></ScrollView></KeyboardAvoidingView>
-          {showDatePicker && Platform.OS !== 'web' && (<DateTimePicker value={tempDate} mode="date" display="default" onChange={onNativeDateChange} />)}
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+              <Ionicons name="close" size={28} color="#333" />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 18, fontWeight: 'bold' }}>編輯專案</Text>
+            <TouchableOpacity onPress={handleSave}>
+              <Text style={{ color: THEME.primary, fontWeight: 'bold', fontSize: 16 }}>儲存</Text>
+            </TouchableOpacity>
+          </View>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+            <ScrollView style={{ flex: 1, padding: 20 }}>
+              <Text style={styles.label}>專案名稱</Text>
+              <TextInput
+                style={styles.input}
+                value={editProject.name}
+                onChangeText={t => setEditProject({ ...editProject, name: t })}
+              />
+              <Text style={styles.label}>專案地址</Text>
+              <TextInput
+                style={styles.input}
+                value={editProject.address}
+                onChangeText={t => setEditProject({ ...editProject, address: t })}
+              />
+              <View style={[styles.row, { zIndex: 3000 }]}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.label}>工地主任</Text>
+                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowManagerPicker(!showManagerPicker)}>
+                    <Text>{editProject.manager || '請選擇'}</Text>
+                    <Ionicons name="chevron-down" size={20} />
+                  </TouchableOpacity>
+                  {showManagerPicker && (
+                    <View style={styles.dropdownList}>
+                      {managers.map(m => (
+                        <TouchableOpacity
+                          key={m}
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setEditProject({ ...editProject, manager: m });
+                            setShowManagerPicker(false)
+                          }}
+                        >
+                          <Text>{m}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>執行狀態</Text>
+                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowStatusPicker(!showStatusPicker)}>
+                    <Text>{EXECUTION_STATUS_MAP[editProject.executionStatus || 'not_started']}</Text>
+                    <Ionicons name="chevron-down" size={20} />
+                  </TouchableOpacity>
+                  {showStatusPicker && (
+                    <View style={styles.dropdownList}>
+                      {EXECUTION_STATUS_OPTIONS.map(s => (
+                        <TouchableOpacity
+                          key={s}
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setEditProject({ ...editProject, executionStatus: s as any });
+                            setShowStatusPicker(false)
+                          }}
+                        >
+                          <Text>{EXECUTION_STATUS_MAP[s]}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+              <Text style={styles.groupHeader}>時程</Text>
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.label}>決標日期</Text>
+                  {renderDateInput('award', editProject.awardDate || '', '日期')}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>開工日期</Text>
+                  {renderDateInput('start', editProject.startDate || '', '日期')}
+                </View>
+              </View>
+              <Text style={styles.label}>契約工期 (天)</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="number-pad"
+                value={editProject.contractDuration?.toString()}
+                onChangeText={t => setEditProject({ ...editProject, contractDuration: parseInt(t) || 0 })}
+              />
+              <View style={{ height: 50 }} />
+              {user?.role === 'admin' && (
+                <TouchableOpacity onPress={handleDelete} style={styles.deleteBtnFull}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>刪除此專案</Text>
+                </TouchableOpacity>
+              )}
+              <View style={{ height: 30 }} />
+            </ScrollView>
+          </KeyboardAvoidingView>
+          {showDatePicker && Platform.OS !== 'web' && (
+            <DateTimePicker value={tempDate} mode="date" display="default" onChange={onNativeDateChange} />
+          )}
         </SafeAreaView>
       </Modal>
     </View>
