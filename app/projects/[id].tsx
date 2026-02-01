@@ -464,7 +464,7 @@ export default function ProjectDetailScreen() {
     if (!docForm.title || !docForm.file || !id || !project) return;
     setDocForm(prev => ({ ...prev, uploading: true }));
     try {
-      const url = await uploadPhoto(docForm.file.uri);
+      const url = await uploadPhoto(docForm.file.uri, docForm.file.name);
       const fileType = docForm.file.mimeType?.includes('pdf') || docForm.file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image';
       const newDoc = { id: Math.random().toString(36).substr(2, 9), title: docForm.title, url, type: fileType, createdAt: new Date().toISOString() };
       await updateProject(id as string, { documents: [...(project.documents || []), newDoc] });

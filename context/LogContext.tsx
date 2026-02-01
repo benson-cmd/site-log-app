@@ -47,7 +47,7 @@ interface LogContextType {
   addLog: (log: Omit<LogEntry, 'id'>) => Promise<void>;
   updateLog: (id: string, data: Partial<LogEntry>) => Promise<void>;
   deleteLog: (id: string) => Promise<void>;
-  uploadPhoto: (uri: string) => Promise<string>;
+  uploadPhoto: (uri: string, fileName?: string) => Promise<string>;
 }
 
 const LogContext = createContext<LogContextType | null>(null);
@@ -68,7 +68,7 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
-  const uploadPhoto = async (photoUri: any): Promise<string> => {
+  const uploadPhoto = async (photoUri: any, fileName?: string): Promise<string> => {
     try {
       // 確保拿到的是純網址字串或原始檔案 (手術級脫殼)
       const fileToUpload = photoUri?.uri || photoUri;
@@ -88,11 +88,16 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      // 硬編碼 Cloudinary 設定
       formData.append('upload_preset', 'ml_default');
 
-      // [手術級修正] 使用 auto resource_type 支援 PDF 與其他檔案類型
-      const response = await fetch('https://api.cloudinary.com/v1_1/df8uaeazt/auto/upload', {
+      // [核心修正] 根據副檔名判定 resource_type
+      const isPdf = (photoUri && typeof photoUri === 'string' && photoUri.toLowerCase().endsWith('.pdf')) ||
+        (fileName && fileName.toLowerCase().endsWith('.pdf'));
+
+      const resourceType = isPdf ? 'raw' : 'image';
+      const apiUrl = `https://api.cloudinary.com/v1_1/df8uaeazt/${resourceType}/upload`;
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
       });
