@@ -200,23 +200,44 @@ export default function ProjectsScreen() {
     return count;
   };
 
-  // Calc Planned Progress
-  const getPlannedProgress = (project: Project) => {
-    if (!project.scheduleData || project.scheduleData.length === 0) return 0;
-    const dateObj = new Date();
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const today = `${year}-${month}-${day}`;
+  // [修正] 預定進度插值計算 (與詳情頁一致)
+  const getPlannedProgress = (project: Project, todayStr: string) => {
+    if (!project.startDate || !project.contractDuration) return 0;
+
+    // 1. 計算預定竣工日
+    const start = new Date(project.startDate);
+    const totalExtensions = project.extensions?.reduce((sum, ext) => sum + ext.days, 0) || 0;
+    const totalDays = (parseInt(project.contractDuration.toString()) || 0) + totalExtensions - 1;
+    const end = new Date(start);
+    end.setDate(start.getDate() + totalDays);
+    const pEndDateStr = end.toISOString().split('T')[0];
+
+    // 2. 準備進度數據
+    const data = [...(project.scheduleData || [])];
+    if (!data.some(p => p.date === project.startDate)) data.push({ date: project.startDate, progress: 0 });
+    if (!data.some(p => p.date === pEndDateStr)) data.push({ date: pEndDateStr, progress: 100 });
+    const schedule = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // 3. 插值計算
+    const parts = todayStr.split('-');
+    const todayTs = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])).getTime();
+    const nextIdx = schedule.findIndex(s => new Date(s.date).getTime() >= todayTs);
+
     let planned = 0;
-    for (let p of project.scheduleData) {
-      if (p.date <= today) {
-        planned = p.progress;
-      } else {
-        break;
-      }
+    if (nextIdx === 0) {
+      planned = schedule[0].progress;
+    } else if (nextIdx === -1) {
+      planned = schedule[schedule.length - 1].progress;
+    } else {
+      const p1 = schedule[nextIdx - 1];
+      const p2 = schedule[nextIdx];
+      const t1 = new Date(p1.date).getTime();
+      const t2 = new Date(p2.date).getTime();
+      const ratio = (todayTs - t1) / (t2 - t1);
+      planned = p1.progress + (p2.progress - p1.progress) * ratio;
     }
-    return planned;
+
+    return Math.round(planned * 10) / 10;
   };
 
   // Handlers
@@ -460,7 +481,7 @@ export default function ProjectsScreen() {
             const hasTodayLog = !!todayLog;
 
             const pendingCount = getPendingIssuesCount(projectLogs);
-            const planned = getPlannedProgress(item);
+            const planned = getPlannedProgress(item, todayStr);
             const diff = actual - planned;
             const isBehind = diff < 0;
 
