@@ -10,16 +10,31 @@ import Sidebar from '../../components/Sidebar';
 import { db } from '../../src/lib/firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
+// [SOP 分類更新] 支援更精確的工程類別
+const CATEGORIES = [
+  '行政管理',   // 內業
+  '假設工程',   // 開工前
+  '基礎工程',   // 開挖擋土
+  '鋼筋工程',   // (新增)
+  '模板工程',   // (新增)
+  '混凝土工程', // (新增)
+  '鋼構工程',   // (新增)
+  '機電工程',   // 水電消防
+  '裝修工程',   // 泥作油漆
+  '景觀工程',   // 外部
+  '安全衛生',   // 工安
+  '品質管理',   // 查驗表
+  '其他'
+] as const;
+
 // SOP Data Interface
 interface SOPItem {
   id: string;
   title: string;
-  category: '基礎工程' | '結構工程' | '裝修工程' | '安全衛生';
+  category: typeof CATEGORIES[number];
   date: string;
   pdfUrl?: string;
 }
-
-const CATEGORIES = ['基礎工程', '結構工程', '裝修工程', '安全衛生'] as const;
 
 export default function SOPScreen() {
   const router = useRouter();
@@ -31,6 +46,7 @@ export default function SOPScreen() {
 
   const [sops, setSops] = useState<SOPItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<string>('全部');
 
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedSOP, setSelectedSOP] = useState<SOPItem | null>(null);
@@ -60,6 +76,10 @@ export default function SOPScreen() {
 
     return () => unsubscribe();
   }, []);
+
+  const filteredSOPs = activeCategory === '全部'
+    ? sops
+    : sops.filter(item => item.category === activeCategory);
 
   const handlePickDocument = async () => {
     try {
@@ -185,8 +205,28 @@ export default function SOPScreen() {
       />
       <StatusBar barStyle="light-content" backgroundColor="#002147" />
 
+      <View style={styles.tabsWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
+          <TouchableOpacity
+            style={[styles.tab, activeCategory === '全部' && styles.tabActive]}
+            onPress={() => setActiveCategory('全部')}
+          >
+            <Text style={[styles.tabText, activeCategory === '全部' && styles.tabTextActive]}>全部</Text>
+          </TouchableOpacity>
+          {CATEGORIES.map(cat => (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.tab, activeCategory === cat && styles.tabActive]}
+              onPress={() => setActiveCategory(cat)}
+            >
+              <Text style={[styles.tabText, activeCategory === cat && styles.tabTextActive]}>{cat}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       <FlatList
-        data={sops}
+        data={filteredSOPs}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <View style={styles.card}>
@@ -320,6 +360,14 @@ const styles = StyleSheet.create({
   fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#C69C6D', justifyContent: 'center', alignItems: 'center', elevation: 5 },
   actionButtons: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
   actionBtn: { padding: 5, marginLeft: 5 },
+
+  // Tabs
+  tabsWrapper: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  tabsContent: { paddingHorizontal: 10, paddingVertical: 12 },
+  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F4F8', marginRight: 10 },
+  tabActive: { backgroundColor: '#002147' },
+  tabText: { fontSize: 13, color: '#666', fontWeight: '500' },
+  tabTextActive: { color: '#fff', fontWeight: 'bold' },
 
   // Viewer
   fullScreenModal: { flex: 1, backgroundColor: '#000' },
