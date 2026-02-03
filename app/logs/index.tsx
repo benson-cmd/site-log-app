@@ -103,13 +103,25 @@ export default function LogsScreen() {
     // 計算機具總數
     const totalMachines = item.machineList?.reduce((acc: number, curr: any) => acc + (Number(curr.quantity) || 0), 0) || 0;
 
+    // 檢查是否有異常狀況 (notes 欄位)
+    const hasIssues = !!item.notes;
+
     return (
       <View style={styles.card}>
-        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-          <Text style={styles.statusText}>
-            {item.status === 'approved' ? '已核准' : (item.status === 'rejected' ? '已退回' : '審核中')}
-          </Text>
+        <View style={styles.cardTopStrip}>
+          {hasIssues && (
+            <View style={styles.issueBadge}>
+              <Ionicons name="warning" size={14} color="#fff" />
+              <Text style={styles.issueBadgeText}>⚠️ 異常列管</Text>
+            </View>
+          )}
+          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusText}>
+              {item.status === 'approved' ? '已核准' : (item.status === 'rejected' ? '已退回' : '審核中')}
+            </Text>
+          </View>
         </View>
+
         <Text style={styles.projectTitle}>{getProjectName(item.projectId || '', item.project)}</Text>
 
         <View style={styles.cardInfoRow}>
@@ -145,10 +157,10 @@ export default function LogsScreen() {
           <Text style={styles.reporterText}>填寫: {item.reporter}</Text>
           <View style={styles.cardActions}>
             <TouchableOpacity onPress={() => handleEdit(item.id)}>
-              <Ionicons name="create-outline" size={22} color="#C69C6D" />
+              <Ionicons name="create-outline" size={24} color="#C69C6D" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => handleDelete(item.id)}>
-              <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
+              <Ionicons name="trash-outline" size={24} color="#FF6B6B" />
             </TouchableOpacity>
           </View>
         </View>
@@ -238,18 +250,21 @@ const styles = StyleSheet.create({
   headerDot: { width: 6, height: 18, backgroundColor: '#C69C6D', borderRadius: 3, marginRight: 8 },
   selectedDateHeader: { fontSize: 18, fontWeight: 'bold', color: '#002147' },
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, position: 'relative', overflow: 'hidden' },
-  statusBadge: { position: 'absolute', top: 0, right: 0, paddingHorizontal: 12, paddingVertical: 4, borderBottomLeftRadius: 12 },
+  cardTopStrip: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 5, gap: 8 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
   statusText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  projectTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 8, marginRight: 60 },
+  issueBadge: { backgroundColor: '#FF8F00', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
+  issueBadgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  projectTitle: { fontSize: 19, fontWeight: 'bold', color: '#333', marginBottom: 8 },
   cardInfoRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   infoBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F4F8', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
   infoText: { fontSize: 12, color: '#444', fontWeight: '500' },
   cardContent: { fontSize: 15, color: '#444', lineHeight: 22, marginBottom: 12 },
   photoPreviewRow: { flexDirection: 'row', marginBottom: 12 },
-  cardPhoto: { width: 70, height: 70, borderRadius: 8, marginRight: 8, backgroundColor: '#eee' },
+  cardPhoto: { width: 75, height: 75, borderRadius: 10, marginRight: 10, backgroundColor: '#eee' },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 12 },
   reporterText: { fontSize: 13, color: '#999' },
-  cardActions: { flexDirection: 'row', gap: 20 },
+  cardActions: { flexDirection: 'row', gap: 18 },
   emptyContainer: { alignItems: 'center', marginTop: 60 },
   emptyText: { color: '#999', fontSize: 16, marginTop: 12 },
   emptyAddBtn: { marginTop: 24, backgroundColor: '#002147', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 25 },
