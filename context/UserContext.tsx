@@ -1,4 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../src/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -28,16 +30,28 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   // 1. 初始化時檢查 LocalStorage
   useEffect(() => {
     const initializeUser = async () => {
-      if (typeof window !== 'undefined') {
-        const storedUser = localStorage.getItem('dwcc_user_info');
+      try {
+        let storedUser = null;
+        if (Platform.OS === 'web') {
+          storedUser = localStorage.getItem('dwcc_user_info');
+        } else {
+          storedUser = await AsyncStorage.getItem('dwcc_user_info');
+        }
+
         if (storedUser) {
           try {
             setUser(JSON.parse(storedUser));
           } catch (e) {
             console.error("Failed to parse user info", e);
-            localStorage.removeItem('dwcc_user_info');
+            if (Platform.OS === 'web') {
+              localStorage.removeItem('dwcc_user_info');
+            } else {
+              await AsyncStorage.removeItem('dwcc_user_info');
+            }
           }
         }
+      } catch (err) {
+        console.error("AsyncStorage error", err);
       }
       // 重點：檢查完畢後，一定要告訴系統「讀取結束」
       setIsLoading(false);
@@ -61,7 +75,11 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           uid: 'admin_backup'
         };
         setUser(adminUser);
-        localStorage.setItem('dwcc_user_info', JSON.stringify(adminUser));
+        if (Platform.OS === 'web') {
+          localStorage.setItem('dwcc_user_info', JSON.stringify(adminUser));
+        } else {
+          await AsyncStorage.setItem('dwcc_user_info', JSON.stringify(adminUser));
+        }
         return true;
       }
 
@@ -96,7 +114,11 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           uid: docSnapshot.id
         };
         setUser(loggedInUser);
-        localStorage.setItem('dwcc_user_info', JSON.stringify(loggedInUser));
+        if (Platform.OS === 'web') {
+          localStorage.setItem('dwcc_user_info', JSON.stringify(loggedInUser));
+        } else {
+          await AsyncStorage.setItem('dwcc_user_info', JSON.stringify(loggedInUser));
+        }
         return true;
       }
 
@@ -109,9 +131,13 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
-    localStorage.removeItem('dwcc_user_info');
+    if (Platform.OS === 'web') {
+      localStorage.removeItem('dwcc_user_info');
+    } else {
+      await AsyncStorage.removeItem('dwcc_user_info');
+    }
   };
 
   return (

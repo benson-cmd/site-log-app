@@ -1,11 +1,14 @@
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Modal, TextInput, ScrollView, Platform, KeyboardAvoidingView, SafeAreaView, ActivityIndicator, StatusBar } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, createElement } from 'react';
+import { useState, createElement, useEffect } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
 import { WebView } from 'react-native-webview';
 import { useUser } from '../../context/UserContext';
 import Sidebar from '../../components/Sidebar';
+
+import { db } from '../../src/lib/firebase';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
 // SOP Data Interface
 interface SOPItem {
@@ -26,33 +29,37 @@ export default function SOPScreen() {
   // Side Menu State
   const [isSidebarVisible, setSidebarVisible] = useState(false);
 
-  const [sops, setSops] = useState<SOPItem[]>([
-    {
-      id: '1',
-      title: '地基開挖作業標準',
-      category: '基礎工程',
-      date: '2023-12-01',
-      pdfUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'
-    },
-    {
-      id: '2',
-      title: '鋼筋綁紮規範',
-      category: '結構工程',
-      date: '2023-12-05',
-      pdfUrl: 'https://www.africau.edu/images/default/sample.pdf'
-    }
-  ]);
+  const [sops, setSops] = useState<SOPItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedSOP, setSelectedSOP] = useState<SOPItem | null>(null);
 
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [currentId, setCurrentId] = useState<string | null>(null);
+
   const [newSOP, setNewSOP] = useState<{
     title: string;
     category: SOPItem['category'] | '';
     pdfUri: string;
     pdfName: string;
   }>({ title: '', category: '', pdfUri: '', pdfName: '' });
+
+  // Fetch SOPs from Firestore
+  useEffect(() => {
+    const q = query(collection(db, 'sop'), orderBy('date', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: SOPItem[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as SOPItem);
+      });
+      setSops(list);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handlePickDocument = async () => {
     try {
@@ -69,9 +76,9 @@ export default function SOPScreen() {
     }
   };
 
-  const handleAddSOP = () => {
+  const handleAddSOP = async () => {
     if (!isSuperAdmin) {
-      Alert.alert('權限不足', '僅限超級管理員可新增 SOP 文件');
+      Alert.alert('權限不足', '僅限超級管理員可執行此操作');
       return;
     }
     if (!newSOP.title || !newSOP.category) {
@@ -79,18 +86,72 @@ export default function SOPScreen() {
       return;
     }
 
-    const item: SOPItem = {
-      id: Math.random().toString(36).substr(2, 9),
+    const data = {
       title: newSOP.title,
-      category: newSOP.category as SOPItem['category'],
+      category: newSOP.category,
       date: new Date().toISOString().split('T')[0],
       pdfUrl: newSOP.pdfUri
     };
 
-    setSops([item, ...sops]);
-    setAddModalVisible(false);
+    try {
+      if (isEditMode && currentId) {
+        await updateDoc(doc(db, 'sop', currentId), data);
+        Alert.alert('成功', 'SOP 已更新');
+      } else {
+        await addDoc(collection(db, 'sop'), data);
+        Alert.alert('成功', 'SOP 已新增');
+      }
+      setAddModalVisible(false);
+      resetForm();
+    } catch (error) {
+      console.error("Error saving SOP:", error);
+      Alert.alert('錯誤', '儲存失敗');
+    }
+  };
+
+  const handleEdit = (item: SOPItem) => {
+    setIsEditMode(true);
+    setCurrentId(item.id);
+    setNewSOP({
+      title: item.title,
+      category: item.category,
+      pdfUri: item.pdfUrl || '',
+      pdfName: item.pdfUrl ? '已上傳檔案' : ''
+    });
+    setAddModalVisible(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    const doDelete = async () => {
+      try {
+        await deleteDoc(doc(db, 'sop', id));
+        if (Platform.OS === 'web') {
+          window.alert('SOP 已刪除');
+        } else {
+          Alert.alert('成功', 'SOP 已刪除');
+        }
+      } catch (error) {
+        console.error("Error deleting SOP:", error);
+        Alert.alert('錯誤', '刪除失敗');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('確定要刪除此 SOP 嗎？')) {
+        await doDelete();
+      }
+    } else {
+      Alert.alert('刪除確認', '確定要刪除此 SOP 嗎？', [
+        { text: '取消', style: 'cancel' },
+        { text: '刪除', style: 'destructive', onPress: doDelete }
+      ]);
+    }
+  };
+
+  const resetForm = () => {
+    setIsEditMode(false);
+    setCurrentId(null);
     setNewSOP({ title: '', category: '', pdfUri: '', pdfName: '' });
-    Alert.alert('成功', 'SOP 已新增');
   };
 
   const handleOpenView = (item: SOPItem) => {
@@ -128,21 +189,34 @@ export default function SOPScreen() {
         data={sops}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => handleOpenView(item)}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="document-text" size={24} color="#C69C6D" />
-            </View>
-            <View style={{ marginLeft: 15, flex: 1 }}>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              <View style={styles.tagRow}>
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>{item.category}</Text>
-                </View>
-                <Text style={styles.dateText}>{item.date}</Text>
+          <View style={styles.card}>
+            <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => handleOpenView(item)}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="document-text" size={24} color="#C69C6D" />
               </View>
-            </View>
+              <View style={{ marginLeft: 15, flex: 1 }}>
+                <Text style={styles.cardTitle}>{item.title}</Text>
+                <View style={styles.tagRow}>
+                  <View style={styles.tag}>
+                    <Text style={styles.tagText}>{item.category}</Text>
+                  </View>
+                  <Text style={styles.dateText}>{item.date}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {isSuperAdmin && (
+              <View style={styles.actionButtons}>
+                <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
+                  <Ionicons name="create-outline" size={22} color="#C69C6D" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
+                  <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
+                </TouchableOpacity>
+              </View>
+            )}
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
+          </View>
         )}
         contentContainerStyle={{ padding: 15 }}
       />
@@ -188,8 +262,8 @@ export default function SOPScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.addModalOverlay}>
           <View style={styles.addModalContent}>
             <View style={styles.addModalHeader}>
-              <Text style={styles.addModalTitle}>新增 SOP 文件</Text>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)}>
+              <Text style={styles.addModalTitle}>{isEditMode ? '編輯 SOP 文件' : '新增 SOP 文件'}</Text>
+              <TouchableOpacity onPress={() => { setAddModalVisible(false); resetForm(); }}>
                 <Ionicons name="close" size={26} color="#333" />
               </TouchableOpacity>
             </View>
@@ -216,7 +290,7 @@ export default function SOPScreen() {
             </ScrollView>
 
             <TouchableOpacity style={styles.submitBtn} onPress={handleAddSOP}>
-              <Text style={styles.submitBtnText}>確認發布</Text>
+              <Text style={styles.submitBtnText}>{isEditMode ? '儲存變更' : '確認發布'}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -244,6 +318,8 @@ const styles = StyleSheet.create({
   tagText: { fontSize: 12, color: '#002147', fontWeight: 'bold' },
   dateText: { fontSize: 12, color: '#999' },
   fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#C69C6D', justifyContent: 'center', alignItems: 'center', elevation: 5 },
+  actionButtons: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
+  actionBtn: { padding: 5, marginLeft: 5 },
 
   // Viewer
   fullScreenModal: { flex: 1, backgroundColor: '#000' },

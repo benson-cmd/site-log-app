@@ -5,7 +5,7 @@ import { ProjectProvider } from '../context/ProjectContext';
 import { LogProvider } from '../context/LogContext';
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
-import { Toaster } from 'sonner';
+//import { Toaster } from 'sonner';
 
 const AuthCheck = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useUser();
@@ -19,7 +19,7 @@ const AuthCheck = ({ children }: { children: React.ReactNode }) => {
 
     // Check if on login screen
     // root (index) is login.
-    const isLoginScreen = segments.length === 0 || (segments.length === 1 && segments[0] === 'index');
+    const isLoginScreen = (segments.length as number) === 0 || (segments.length === 1 && segments[0] === 'index');
 
     if (!user && !isLoginScreen) {
       // Redirect to login
@@ -45,7 +45,7 @@ const AuthCheck = ({ children }: { children: React.ReactNode }) => {
 export default function RootLayout() {
   return (
     <UserProvider>
-      <Toaster position="top-center" richColors />
+
       <PersonnelProvider>
         <ProjectProvider>
           <LogProvider>

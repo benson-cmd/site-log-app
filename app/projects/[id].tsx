@@ -54,7 +54,9 @@ export default function ProjectDetailScreen() {
   const { user } = useUser();
 
   const project = projects.find(p => p.id === id);
-  const projectLogs = logs.filter(l => l.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const projectLogs = useMemo(() => {
+    return logs.filter(l => l.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [logs, id]);
 
   // --- Calculations (Moved Up) ---
   const totalExtensionDays = useMemo(() => {
@@ -256,7 +258,10 @@ export default function ProjectDetailScreen() {
         const d = new Date(ts);
         return `${d.getMonth() + 1}/${d.getDate()}`;
       });
-      setChartLabels(labelsStr);
+      setChartLabels(prev => {
+        const next = labelsStr;
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
 
       if (projectLogs && projectLogs.length > 0) {
         const cleanLogs = projectLogs.map(l => ({
@@ -271,9 +276,14 @@ export default function ProjectDetailScreen() {
           return 0;
         });
         const hasData = mappedData.some(d => d !== null);
-        setActualData(hasData ? mappedData : [0]);
+        const finalActual = hasData ? mappedData : [0];
+        setActualData(prev => {
+          return JSON.stringify(prev) === JSON.stringify(finalActual) ? prev : finalActual;
+        });
       } else {
-        setActualData([0]);
+        setActualData(prev => {
+          return JSON.stringify(prev) === JSON.stringify([0]) ? prev : [0];
+        });
       }
 
       if (project.scheduleData && project.scheduleData.length > 0) {
@@ -283,10 +293,14 @@ export default function ProjectDetailScreen() {
           if (valid.length > 0) return valid[valid.length - 1].progress;
           return 0;
         });
-        setPlannedData(newPlannedData);
+        setPlannedData(prev => {
+          return JSON.stringify(prev) === JSON.stringify(newPlannedData) ? prev : newPlannedData;
+        });
       } else {
         const linear = points.map((_, i) => Math.round((i / steps) * 100));
-        setPlannedData(linear);
+        setPlannedData(prev => {
+          return JSON.stringify(prev) === JSON.stringify(linear) ? prev : linear;
+        });
       }
     }
   }, [project, projectLogs, plannedCompletionDate]);
