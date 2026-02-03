@@ -1,16 +1,16 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, SafeAreaView } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import { useLogs, LaborItem, MachineItem, LogIssue } from '../../context/LogContext';
+import { useLogs, LaborItem, MachineItem } from '../../context/LogContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useUser } from '../../context/UserContext';
 import { toast } from 'sonner';
 
 export default function NewLogScreen() {
   const router = useRouter();
-  const { date } = useLocalSearchParams<{ date?: string }>();
+  const { date: initialDate } = useLocalSearchParams<{ date?: string }>();
   const { addLog, uploadPhoto } = useLogs();
   const { projects } = useProjects();
   const { user } = useUser();
@@ -19,13 +19,14 @@ export default function NewLogScreen() {
   const [formData, setFormData] = useState({
     project: '',
     projectId: '',
-    date: date || new Date().toISOString().split('T')[0],
+    date: initialDate || new Date().toISOString().split('T')[0],
     weather: '晴',
     content: '',
     personnelList: [] as LaborItem[],
     machineList: [] as MachineItem[],
     photos: [] as string[],
-    issues: [] as LogIssue[],
+    notes: '',
+    actualProgress: '',
     reporter: user?.name || '使用者'
   });
 
@@ -33,14 +34,29 @@ export default function NewLogScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
 
+  // --- 預定進度邏輯 (Scheduled Progress) ---
+  const scheduledProgress = useMemo(() => {
+    if (!formData.projectId || !formData.date) return '0';
+    const project = projects.find(p => p.id === formData.projectId);
+    if (!project || !project.scheduleData) return '0';
+
+    // 尋找對應日期的進度
+    const point = project.scheduleData.find(d => d.date === formData.date);
+    if (point) return point.progress.toString();
+
+    // 如果沒精確日期，找最接近的一個
+    const sorted = [...project.scheduleData].sort((a, b) => a.date.localeCompare(b.date));
+    let closest = 0;
+    for (const d of sorted) {
+      if (d.date <= formData.date) closest = d.progress;
+      else break;
+    }
+    return closest.toString();
+  }, [formData.projectId, formData.date, projects]);
+
   // --- Personnel Actions ---
   const addPersonnel = () => {
-    const newItem: LaborItem = {
-      id: Date.now().toString(),
-      type: '',
-      count: 1,
-      note: ''
-    };
+    const newItem: LaborItem = { id: Date.now().toString(), type: '', count: 1, note: '' };
     setFormData(prev => ({ ...prev, personnelList: [...prev.personnelList, newItem] }));
   };
 
@@ -57,12 +73,7 @@ export default function NewLogScreen() {
 
   // --- Machinery Actions ---
   const addMachine = () => {
-    const newItem: MachineItem = {
-      id: Date.now().toString(),
-      name: '',
-      quantity: 1,
-      note: ''
-    };
+    const newItem: MachineItem = { id: Date.now().toString(), name: '', quantity: 1, note: '' };
     setFormData(prev => ({ ...prev, machineList: [...prev.machineList, newItem] }));
   };
 
@@ -88,13 +99,15 @@ export default function NewLogScreen() {
 
       if (!result.canceled) {
         setIsUploading(true);
-        const uploadPromises = result.assets.map(asset => uploadPhoto(asset.uri));
+        const uploadPromises = result.assets.map(async (asset) => {
+          const url = await uploadPhoto(asset.uri);
+          return url;
+        });
         const urls = await Promise.all(uploadPromises);
         setFormData(prev => ({ ...prev, photos: [...prev.photos, ...urls] }));
       }
     } catch (error) {
       toast.error('照片上傳失敗');
-      console.error(error);
     } finally {
       setIsUploading(false);
     }
@@ -115,7 +128,9 @@ export default function NewLogScreen() {
       await addLog({
         ...formData,
         status: 'pending_review',
-        reporterId: user?.uid
+        reporterId: user?.uid,
+        plannedProgress: parseFloat(scheduledProgress) || 0,
+        actualProgress: formData.actualProgress
       });
 
       Alert.alert('成功', '日誌已儲存並送審', [
@@ -130,7 +145,16 @@ export default function NewLogScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: '新增施工日誌', headerStyle: { backgroundColor: '#002147' }, headerTintColor: '#fff' }} />
+      <Stack.Screen options={{
+        title: '新增施工日誌',
+        headerStyle: { backgroundColor: '#002147' },
+        headerTintColor: '#fff',
+        headerLeft: () => (
+          <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+        )
+      }} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 40 }}>
 
@@ -171,12 +195,42 @@ export default function NewLogScreen() {
             </View>
           </View>
 
+          {/* 進度欄位 */}
+          <View style={styles.row}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.label}>📈 預定進度 (%)</Text>
+              <View style={[styles.input, { backgroundColor: '#E3F2FD' }]}>
+                <Text style={{ color: '#002147', fontWeight: 'bold' }}>{scheduledProgress}%</Text>
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>📉 實際進度 (%)</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="numeric"
+                placeholder="例如: 25.5"
+                value={formData.actualProgress}
+                onChangeText={t => setFormData(prev => ({ ...prev, actualProgress: t }))}
+              />
+            </View>
+          </View>
+
+          {/* 施工內容摘要 - 移至上方 */}
+          <Text style={styles.label}>📝 施工內容摘要</Text>
+          <TextInput
+            style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+            multiline
+            placeholder="請詳細描述今日施工進度與項目..."
+            value={formData.content}
+            onChangeText={t => setFormData(prev => ({ ...prev, content: t }))}
+          />
+
           {/* 出工區塊 */}
           <View style={styles.sectionHeader}>
             <Text style={styles.label}>👷 出工 (工種/人數)</Text>
             <TouchableOpacity onPress={addPersonnel}><Ionicons name="add-circle" size={24} color="#C69C6D" /></TouchableOpacity>
           </View>
-          {formData.personnelList.map((item, idx) => (
+          {formData.personnelList.map((item) => (
             <View key={item.id} style={styles.listCard}>
               <View style={styles.listRow}>
                 <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="工種名稱" value={item.type} onChangeText={t => updatePersonnel(item.id, 'type', t)} />
@@ -192,7 +246,7 @@ export default function NewLogScreen() {
             <Text style={styles.label}>🚜 機具 (名稱/數量)</Text>
             <TouchableOpacity onPress={addMachine}><Ionicons name="add-circle" size={24} color="#C69C6D" /></TouchableOpacity>
           </View>
-          {formData.machineList.map((item, idx) => (
+          {formData.machineList.map((item) => (
             <View key={item.id} style={styles.listCard}>
               <View style={styles.listRow}>
                 <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="機具名稱" value={item.name} onChangeText={t => updateMachine(item.id, 'name', t)} />
@@ -202,15 +256,6 @@ export default function NewLogScreen() {
               <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註 (例如：進場/維修)" value={item.note} onChangeText={t => updateMachine(item.id, 'note', t)} />
             </View>
           ))}
-
-          <Text style={styles.label}>📝 施工內容摘要</Text>
-          <TextInput
-            style={[styles.input, { height: 120, textAlignVertical: 'top' }]}
-            multiline
-            placeholder="請詳細描述施工進度與項目..."
-            value={formData.content}
-            onChangeText={t => setFormData(prev => ({ ...prev, content: t }))}
-          />
 
           <Text style={styles.label}>📸 施工照片 (多選)</Text>
           <View style={styles.photoGrid}>
@@ -225,6 +270,15 @@ export default function NewLogScreen() {
               <Text style={{ color: '#999', fontSize: 10, marginTop: 4 }}>{isUploading ? '上傳中' : `新增 (${formData.photos.length}/20)`}</Text>
             </TouchableOpacity>
           </View>
+
+          <Text style={styles.label}>⚠️ 異常狀況報告 / 備註</Text>
+          <TextInput
+            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+            multiline
+            placeholder="若有停工、缺失或特殊狀況請在此說明..."
+            value={formData.notes}
+            onChangeText={t => setFormData(prev => ({ ...prev, notes: t }))}
+          />
 
         </ScrollView>
       </KeyboardAvoidingView>
@@ -245,7 +299,7 @@ export default function NewLogScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   body: { padding: 20 },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#002147', marginTop: 20, marginBottom: 8 },
+  label: { fontSize: 13, fontWeight: 'bold', color: '#002147', marginTop: 18, marginBottom: 6 },
   input: {
     borderWidth: 1,
     borderColor: '#E0E4E8',
@@ -256,24 +310,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center'
   },
-  pickerBox: { borderWidth: 1, borderColor: '#eee', borderRadius: 10, marginTop: 5, backgroundColor: '#fff', elevation: 2 },
+  pickerBox: { borderWidth: 1, borderColor: '#eee', borderRadius: 10, marginTop: 5, backgroundColor: '#fff', elevation: 3 },
   pickerItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   row: { flexDirection: 'row' },
-  weatherGroup: { flexDirection: 'row', gap: 8 },
+  weatherGroup: { flexDirection: 'row', gap: 6 },
   weatherBtn: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#eee', borderRadius: 8, alignItems: 'center' },
   weatherBtnActive: { backgroundColor: '#C69C6D', borderColor: '#C69C6D' },
-  weatherText: { color: '#666' },
+  weatherText: { color: '#666', fontSize: 13 },
   weatherTextActive: { color: '#fff', fontWeight: 'bold' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 25, marginBottom: 10 },
-  listCard: { backgroundColor: '#F5F7FA', padding: 12, borderRadius: 10, marginBottom: 10 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 22, marginBottom: 8 },
+  listCard: { backgroundColor: '#F5F7FA', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#E8ECEF' },
   listRow: { flexDirection: 'row', alignItems: 'center' },
-  subInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee', borderRadius: 6, padding: 8, fontSize: 14 },
+  subInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, fontSize: 14 },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   photoItem: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', position: 'relative' },
   photoImg: { width: '100%', height: '100%' },
   photoDelete: { position: 'absolute', top: 2, right: 2, backgroundColor: '#fff', borderRadius: 10 },
   photoAdd: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
   footer: { padding: 20, borderTopWidth: 1, borderTopColor: '#eee' },
-  submitBtn: { backgroundColor: '#C69C6D', padding: 16, borderRadius: 12, alignItems: 'center' },
+  submitBtn: { backgroundColor: '#C69C6D', padding: 16, borderRadius: 12, alignItems: 'center', elevation: 2 },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });
