@@ -103,8 +103,8 @@ export default function LogsScreen() {
     // 計算機具總數
     const totalMachines = item.machineList?.reduce((acc: number, curr: any) => acc + (Number(curr.quantity) || 0), 0) || 0;
 
-    // 檢查是否有異常狀況 (notes 欄位)
-    const hasIssues = !!item.notes;
+    // 檢查是否有異常狀況 (issues 欄位)
+    const hasIssues = !!item.issues;
 
     return (
       <View style={styles.card}>

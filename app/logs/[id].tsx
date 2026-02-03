@@ -24,7 +24,7 @@ export default function EditLogScreen() {
     personnelList: [],
     machineList: [],
     photos: [],
-    notes: '',
+    issues: '',                 // 字串型別的備註
     actualProgress: '',
     reporter: ''
   });
@@ -45,7 +45,7 @@ export default function EditLogScreen() {
         personnelList: existingLog.personnelList || (existingLog as any).labor || [],
         machineList: existingLog.machineList || (existingLog as any).machines || [],
         photos: existingLog.photos || [],
-        notes: existingLog.notes || '',
+        issues: existingLog.issues || (existingLog as any).notes || '', // 相容舊版 notes
         actualProgress: existingLog.actualProgress?.toString() || ''
       });
       setLoading(false);
@@ -79,7 +79,7 @@ export default function EditLogScreen() {
     );
   }
 
-  // --- Personnel Actions ---
+  // --- Actions ---
   const addPersonnel = () => {
     const newItem: LaborItem = { id: Date.now().toString(), type: '', count: 1, note: '' };
     setFormData(prev => ({ ...prev, personnelList: [...(prev.personnelList || []), newItem] }));
@@ -96,7 +96,6 @@ export default function EditLogScreen() {
     setFormData(prev => ({ ...prev, personnelList: prev.personnelList?.filter(item => item.id !== pId) }));
   };
 
-  // --- Machinery Actions ---
   const addMachine = () => {
     const newItem: MachineItem = { id: Date.now().toString(), name: '', quantity: 1, note: '' };
     setFormData(prev => ({ ...prev, machineList: [...(prev.machineList || []), newItem] }));
@@ -113,7 +112,6 @@ export default function EditLogScreen() {
     setFormData(prev => ({ ...prev, machineList: prev.machineList?.filter(item => item.id !== mId) }));
   };
 
-  // --- Photo Actions ---
   const pickImages = async () => {
     if (isUploading) return;
     try {
@@ -128,7 +126,6 @@ export default function EditLogScreen() {
         const uploadPromises = result.assets.map(asset => uploadPhoto(asset.uri));
         const urls = await Promise.all(uploadPromises);
         setFormData(prev => ({ ...prev, photos: [...(prev.photos || []), ...urls] }));
-        toast.success('上傳完成');
       }
     } catch (error) {
       toast.error('上傳失敗');
@@ -141,61 +138,51 @@ export default function EditLogScreen() {
     setFormData(prev => ({ ...prev, photos: prev.photos?.filter((_, i) => i !== index) }));
   };
 
-  // --- 異常解除 (Resolve Issue) ---
+  // --- 管理員操作 ---
   const handleResolveIssue = async () => {
-    Alert.alert('解除列管', '確定要清除當前異常狀況並標記為已解除嗎？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '確定解除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await updateLog(id as string, { notes: '' });
-            setFormData(prev => ({ ...prev, notes: '' }));
-            Alert.alert('成功', '異常狀況已解除列管');
-          } catch (e) {
-            Alert.alert('錯誤', '解除失敗，請確認網路連線。');
-          }
-        }
-      }
-    ]);
+    try {
+      await updateLog(id as string, { issues: '' });
+      setFormData(prev => ({ ...prev, issues: '' }));
+      Alert.alert('成功', '異常狀況已解除列管');
+    } catch (e) {
+      Alert.alert('錯誤', '解除失敗');
+    }
   };
 
-  // --- 管理員審核 (Admin Approve) ---
   const handleApprove = async () => {
-    Alert.alert('審核日誌', '確定要核准此筆施工日誌嗎？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '核准',
-        onPress: async () => {
-          try {
-            setIsSubmitting(true);
-            await updateLog(id as string, { status: 'approved' });
-            Alert.alert('✅ 已核准', '該筆日誌已正式歸檔。', [
-              { text: '確定', onPress: () => router.back() }
-            ]);
-          } catch (e) {
-            Alert.alert('錯誤', '核准失敗');
-          } finally {
-            setIsSubmitting(false);
-          }
-        }
-      }
-    ]);
+    try {
+      setIsSubmitting(true);
+      await updateLog(id as string, { status: 'approved' });
+      Alert.alert('✅ 已核准', '該筆日誌已正式歸檔。', [
+        { text: '確定', onPress: () => router.back() }
+      ]);
+    } catch (e) {
+      Alert.alert('核准失敗', '連線異常，請稍後再試。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReject = async () => {
+    try {
+      setIsSubmitting(true);
+      await updateLog(id as string, { status: 'rejected' });
+      Alert.alert('⛔ 已退回', '日誌已退回給填寫人修正。', [
+        { text: '確定', onPress: () => router.back() }
+      ]);
+    } catch (e) {
+      Alert.alert('操作失敗', '連線異常，請稍後再試。');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // --- Submit Update ---
   const handleSubmit = async () => {
     if (isSubmitting) return;
 
-    if (!formData.content?.trim()) {
-      Alert.alert('資料缺漏', '請填寫「施工內容摘要」才能儲存。');
-      return;
-    }
-    if (isUploading) {
-      Alert.alert('請等待', '照片上傳中，請稍候。');
-      return;
-    }
+    if (!formData.content?.trim()) return Alert.alert('資料缺漏', '施工內容摘要為必填');
+    if (isUploading) return Alert.alert('請等待', '照片上傳中');
 
     try {
       setIsSubmitting(true);
@@ -203,15 +190,13 @@ export default function EditLogScreen() {
         ...formData,
         status: (formData.status === 'rejected' ? 'pending_review' : formData.status) as any,
         plannedProgress: parseFloat(scheduledProgress) || 0,
-        actualProgress: formData.actualProgress
       });
 
       Alert.alert('✅ 修改成功', '日誌資料已更新並提交。', [
         { text: '確定', onPress: () => router.back() }
       ]);
-    } catch (error) {
-      console.error(error);
-      Alert.alert('❌ 儲存失敗', '無法連線至資料庫，請檢查網路。');
+    } catch (error: any) {
+      Alert.alert('❌ 儲存失敗', error.message || '請檢查網路連線');
     } finally {
       setIsSubmitting(false);
     }
@@ -221,21 +206,21 @@ export default function EditLogScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{
         title: '編輯日誌',
-        headerStyle: { backgroundColor: '#002147' },
-        headerTintColor: '#fff',
-        headerLeft: () => null,
+        presentation: 'modal',
         headerRight: () => (
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 10 }}>
-            <Ionicons name="close" size={28} color="#fff" />
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 15 }}>
+            <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
-        )
+        ),
+        headerStyle: { backgroundColor: '#002147' },
+        headerTintColor: '#fff'
       }} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 60 }}>
+        <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 100 }}>
 
           <Text style={styles.label}>🏗️ 專案名稱</Text>
           <TouchableOpacity style={styles.input} onPress={() => setShowProjectPicker(!showProjectPicker)}>
-            <Text style={{ fontSize: 16 }}>{formData.project || '請選擇專案...'}</Text>
+            <Text>{formData.project || '點擊選擇...'}</Text>
             <Ionicons name="chevron-down" size={20} color="#666" />
           </TouchableOpacity>
           {showProjectPicker && (
@@ -245,7 +230,7 @@ export default function EditLogScreen() {
                   setFormData(prev => ({ ...prev, project: p.name, projectId: p.id }));
                   setShowProjectPicker(false);
                 }}>
-                  <Text style={{ fontSize: 16 }}>{p.name}</Text>
+                  <Text>{p.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -254,16 +239,14 @@ export default function EditLogScreen() {
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>📅 施工日期</Text>
-              <View style={[styles.input, { backgroundColor: '#F3F4F6' }]}>
-                <Text style={{ fontSize: 16 }}>{formData.date}</Text>
-              </View>
+              <View style={[styles.input, { backgroundColor: '#eee' }]}><Text>{formData.date}</Text></View>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>☀️ 天氣狀況</Text>
+              <Text style={styles.label}>☀️ 天氣</Text>
               <View style={styles.weatherGroup}>
                 {['晴', '陰', '雨'].map(w => (
-                  <TouchableOpacity key={w} style={[styles.weatherBtn, formData.weather === w && styles.weatherBtnActive]} onPress={() => setFormData(prev => ({ ...prev, weather: w }))}>
-                    <Text style={[styles.weatherText, formData.weather === w && styles.weatherTextActive]}>{w}</Text>
+                  <TouchableOpacity key={w} style={[styles.weatherBtn, formData.weather === w && { backgroundColor: '#C69C6D' }]} onPress={() => setFormData(prev => ({ ...prev, weather: w }))}>
+                    <Text style={{ color: formData.weather === w ? '#fff' : '#666' }}>{w}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -273,23 +256,15 @@ export default function EditLogScreen() {
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>📈 預定進度 (%)</Text>
-              <View style={[styles.input, { backgroundColor: '#E0F2FE' }]}>
-                <Text style={{ color: '#0369A1', fontWeight: 'bold', fontSize: 16 }}>{scheduledProgress}%</Text>
-              </View>
+              <View style={[styles.input, { backgroundColor: '#f0f4f8' }]}><Text style={{ fontWeight: 'bold' }}>{scheduledProgress}%</Text></View>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>📉 實際進度 (%)</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                placeholder="例如: 25.5"
-                value={formData.actualProgress}
-                onChangeText={t => setFormData(prev => ({ ...prev, actualProgress: t }))}
-              />
+              <Text style={styles.label}>📉 累積實際進度 (%)</Text>
+              <TextInput style={styles.input} keyboardType="numeric" placeholder="例如: 12.5" value={formData.actualProgress?.toString() || ''} onChangeText={t => setFormData(prev => ({ ...prev, actualProgress: t }))} />
             </View>
           </View>
 
-          <Text style={styles.label}>📝 施工內容摘要 <Text style={{ color: 'red' }}>*</Text></Text>
+          <Text style={styles.label}>📝 施工內容摘要 *</Text>
           <TextInput
             style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
             multiline
@@ -302,14 +277,14 @@ export default function EditLogScreen() {
             <Text style={styles.label}>👷 出工 (工種/人數)</Text>
             <TouchableOpacity onPress={addPersonnel}><Ionicons name="add-circle" size={28} color="#C69C6D" /></TouchableOpacity>
           </View>
-          {formData.personnelList?.map((item) => (
-            <View key={item.id} style={styles.listCard}>
-              <View style={styles.listRow}>
-                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="工種" value={item.type} onChangeText={t => updatePersonnel(item.id, 'type', t)} />
-                <TextInput style={[styles.subInput, { flex: 1, marginLeft: 10 }]} placeholder="人數" keyboardType="numeric" value={item.count?.toString()} onChangeText={t => updatePersonnel(item.id, 'count', parseInt(t) || 0)} />
-                <TouchableOpacity style={{ marginLeft: 10 }} onPress={() => removePersonnel(item.id)}><Ionicons name="trash" size={22} color="#FF6B6B" /></TouchableOpacity>
+          {formData.personnelList?.map(item => (
+            <View key={item.id} style={styles.cardItem}>
+              <View style={styles.row}>
+                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="工種" value={item.type} onChangeText={v => updatePersonnel(item.id, 'type', v)} />
+                <TextInput style={[styles.subInput, { flex: 1, marginLeft: 10 }]} placeholder="人數" keyboardType="numeric" value={item.count?.toString()} onChangeText={v => updatePersonnel(item.id, 'count', parseInt(v) || 0)} />
+                <TouchableOpacity onPress={() => removePersonnel(item.id)} style={{ marginLeft: 10 }}><Ionicons name="trash" size={22} color="#FF6B6B" /></TouchableOpacity>
               </View>
-              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註" value={item.note || (item as any).work} onChangeText={t => updatePersonnel(item.id, 'note', t)} />
+              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註" value={item.note || (item as any).work} onChangeText={v => updatePersonnel(item.id, 'note', v)} />
             </View>
           ))}
 
@@ -317,115 +292,92 @@ export default function EditLogScreen() {
             <Text style={styles.label}>🚜 機具 (名稱/數量)</Text>
             <TouchableOpacity onPress={addMachine}><Ionicons name="add-circle" size={28} color="#C69C6D" /></TouchableOpacity>
           </View>
-          {formData.machineList?.map((item) => (
-            <View key={item.id} style={styles.listCard}>
-              <View style={styles.listRow}>
-                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="名稱" value={item.name} onChangeText={t => updateMachine(item.id, 'name', t)} />
-                <TextInput style={[styles.subInput, { flex: 1, marginLeft: 10 }]} placeholder="數量" keyboardType="numeric" value={item.quantity?.toString()} onChangeText={t => updateMachine(item.id, 'quantity', parseInt(t) || 0)} />
-                <TouchableOpacity style={{ marginLeft: 10 }} onPress={() => removeMachine(item.id)}><Ionicons name="trash" size={22} color="#FF6B6B" /></TouchableOpacity>
+          {formData.machineList?.map(item => (
+            <View key={item.id} style={styles.cardItem}>
+              <View style={styles.row}>
+                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="名稱" value={item.name} onChangeText={v => updateMachine(item.id, 'name', v)} />
+                <TextInput style={[styles.subInput, { flex: 1, marginLeft: 10 }]} placeholder="數量" keyboardType="numeric" value={item.quantity?.toString()} onChangeText={v => updateMachine(item.id, 'quantity', parseInt(v) || 0)} />
+                <TouchableOpacity onPress={() => removeMachine(item.id)} style={{ marginLeft: 10 }}><Ionicons name="trash" size={22} color="#FF6B6B" /></TouchableOpacity>
               </View>
-              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註" value={item.note} onChangeText={t => updateMachine(item.id, 'note', t)} />
+              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註" value={item.note} onChangeText={v => updateMachine(item.id, 'note', v)} />
             </View>
           ))}
 
-          <Text style={styles.label}>📸 施工照片 (多選預覽)</Text>
+          <Text style={styles.label}>📸 施工照片</Text>
           <View style={styles.photoGrid}>
-            {formData.photos?.map((url, idx) => (
-              <View key={idx} style={styles.photoItem}>
-                <Image source={{ uri: url }} style={styles.photoImg} />
-                <TouchableOpacity style={styles.photoDelete} onPress={() => removePhoto(idx)}><Ionicons name="close-circle" size={22} color="#F44336" /></TouchableOpacity>
+            {formData.photos?.map((p, i) => (
+              <View key={i} style={styles.photoBox}>
+                <Image source={{ uri: p }} style={styles.photo} />
+                <TouchableOpacity style={styles.photoDel} onPress={() => removePhoto(i)}><Ionicons name="close-circle" size={20} color="#F44336" /></TouchableOpacity>
               </View>
             ))}
             <TouchableOpacity style={styles.photoAdd} onPress={pickImages} disabled={isUploading}>
-              {isUploading ? <ActivityIndicator color="#C69C6D" /> : <Ionicons name="camera" size={32} color="#AAA" />}
-              <Text style={{ color: '#AAA', fontSize: 11, marginTop: 4 }}>{isUploading ? '處理中' : '新增照片'}</Text>
+              {isUploading ? <ActivityIndicator color="#C69C6D" /> : <Ionicons name="camera" size={32} color="#ccc" />}
             </TouchableOpacity>
           </View>
 
           <View style={styles.sectionHeader}>
-            <Text style={styles.label}>⚠️ 異常狀況報告 / 備註</Text>
-            {formData.notes ? (
-              <TouchableOpacity style={styles.resolveBtn} onPress={handleResolveIssue}>
+            <Text style={styles.label}>⚠️ 異常狀況報告</Text>
+            {formData.issues ? (
+              <TouchableOpacity onPress={handleResolveIssue} style={styles.resolveBtn}>
                 <Text style={styles.resolveBtnText}>解除列管</Text>
               </TouchableOpacity>
             ) : null}
           </View>
           <TextInput
-            style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+            style={[styles.input, { height: 100, textAlignVertical: 'top' }, formData.issues ? { borderColor: '#FF9800', borderWidth: 2 } : null]}
             multiline
-            placeholder="若有缺失或異常狀況請說明..."
-            value={formData.notes}
-            onChangeText={t => setFormData(prev => ({ ...prev, notes: t }))}
+            placeholder="請填列異常狀況..."
+            value={formData.issues}
+            onChangeText={t => setFormData(prev => ({ ...prev, issues: t }))}
           />
 
-          {/* 管理員專屬：核准按鈕 */}
           {isAdmin && formData.status !== 'approved' && (
-            <TouchableOpacity style={styles.approveBtn} onPress={handleApprove} disabled={isSubmitting}>
-              <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-              <Text style={styles.approveBtnText}>核准本筆日誌</Text>
-            </TouchableOpacity>
+            <View style={[styles.row, { marginTop: 30, gap: 10 }]}>
+              <TouchableOpacity style={[styles.adminBtn, { backgroundColor: '#4CAF50' }]} onPress={handleApprove} disabled={isSubmitting}>
+                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                <Text style={styles.adminBtnText}>核准日誌</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.adminBtn, { backgroundColor: '#F44336' }]} onPress={handleReject} disabled={isSubmitting}>
+                <Ionicons name="close-circle" size={20} color="#fff" />
+                <Text style={styles.adminBtnText}>退回修正</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.submitBtn, (isUploading || isSubmitting) && { backgroundColor: '#AAA' }]}
-          onPress={handleSubmit}
-          disabled={isUploading || isSubmitting}
-        >
-          {isSubmitting ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <ActivityIndicator color="#FFF" style={{ marginRight: 10 }} />
-              <Text style={styles.submitBtnText}>儲存處理中...</Text>
-            </View>
-          ) : (
-            <Text style={styles.submitBtnText}>儲存修改內容</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={[styles.submitBtn, (isSubmitting || isUploading) && { backgroundColor: '#ccc' }]} onPress={handleSubmit} disabled={isSubmitting || isUploading}>
+        {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>儲存修改內容</Text>}
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
+  container: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   body: { padding: 20 },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#002147', marginTop: 18, marginBottom: 8 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E0E4E8',
-    borderRadius: 12,
-    padding: 14,
-    backgroundColor: '#F9FAFB',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  pickerBox: { borderWidth: 1, borderColor: '#EEE', borderRadius: 12, marginTop: 5, backgroundColor: '#FFF', elevation: 4 },
-  pickerItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  label: { fontSize: 14, fontWeight: 'bold', color: '#002147', marginTop: 15, marginBottom: 8 },
+  input: { borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 12, backgroundColor: '#fafafa', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   row: { flexDirection: 'row' },
-  weatherGroup: { flexDirection: 'row', gap: 6 },
-  weatherBtn: { flex: 1, paddingVertical: 12, borderWidth: 1, borderColor: '#EEE', borderRadius: 10, alignItems: 'center' },
-  weatherBtnActive: { backgroundColor: '#C69C6D', borderColor: '#C69C6D' },
-  weatherText: { color: '#666', fontSize: 13 },
-  weatherTextActive: { color: '#FFF', fontWeight: 'bold' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 10 },
-  listCard: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' },
-  listRow: { flexDirection: 'row', alignItems: 'center' },
-  subInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 10, fontSize: 15, flex: 1 },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
-  photoItem: { width: 90, height: 90, borderRadius: 12, overflow: 'hidden', position: 'relative' },
-  photoImg: { width: '100%', height: '100%' },
-  photoDelete: { position: 'absolute', top: 3, right: 3, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 12 },
-  photoAdd: { width: 90, height: 90, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  resolveBtn: { backgroundColor: '#10B981', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  resolveBtnText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
-  approveBtn: { backgroundColor: '#059669', padding: 16, borderRadius: 12, marginTop: 30, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
-  approveBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FFF' },
-  submitBtn: { backgroundColor: '#C69C6D', padding: 18, borderRadius: 14, alignItems: 'center', elevation: 3 },
-  submitBtnText: { color: '#FFF', fontSize: 17, fontWeight: 'bold' }
+  weatherGroup: { flexDirection: 'row', gap: 5 },
+  weatherBtn: { flex: 1, padding: 10, borderWidth: 1, borderColor: '#eee', borderRadius: 8, alignItems: 'center' },
+  pickerBox: { borderWidth: 1, borderColor: '#eee', marginTop: 5, borderRadius: 8, backgroundColor: '#fff' },
+  pickerItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
+  cardItem: { backgroundColor: '#f8f9fa', padding: 15, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#eee' },
+  subInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8 },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  photoBox: { width: 90, height: 90, borderRadius: 8, overflow: 'hidden', position: 'relative' },
+  photo: { width: '100%', height: '100%' },
+  photoDel: { position: 'absolute', top: 2, right: 2, backgroundColor: '#fff', borderRadius: 10 },
+  photoAdd: { width: 90, height: 90, borderRadius: 8, borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
+  resolveBtn: { backgroundColor: '#10B981', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 6 },
+  resolveBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  adminBtn: { flex: 1, padding: 15, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5 },
+  adminBtnText: { color: '#fff', fontWeight: 'bold' },
+  submitBtn: { margin: 20, backgroundColor: '#C69C6D', padding: 18, borderRadius: 12, alignItems: 'center' },
+  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

@@ -37,10 +37,10 @@ export interface LogEntry {
   reporter: string;
   status: 'draft' | 'pending_review' | 'approved' | 'rejected';
   photos?: string[];
-  notes?: string;
+  issues?: string;           // 統一備註欄位名為 issues (字串)
+  issueList?: LogIssue[];    // 原本的列表改名為 issueList
   reporterId?: string;
   actualProgress?: string | number;
-  issues?: LogIssue[];
 }
 
 interface LogContextType {
@@ -71,22 +71,22 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
 
   const uploadPhoto = async (photoUri: any, fileName?: string): Promise<string> => {
     try {
-      // 確保拿到的是純網址字串或原始檔案 (手術級脫殼)
-      const fileToUpload = photoUri?.uri || photoUri;
-
+      // [手術級修正] 使用 blob 轉換確保跨平台穩定性
+      let fileToUpload: any = photoUri?.uri || photoUri;
       const formData = new FormData();
 
-      // [手術級修正] Web 端絕對不可使用 { uri: ... } 包裝，直接使用網址字串
-      if (Platform.OS === 'web') {
-        formData.append('file', fileToUpload);
-      } else {
-        // React Native 環境處理
+      if (Platform.OS !== 'web') {
+        const response = await fetch(fileToUpload);
+        const blob = await response.blob();
+
         // @ts-ignore
         formData.append('file', {
           uri: fileToUpload,
           type: 'image/jpeg',
-          name: 'upload.jpg'
+          name: fileName || 'upload.jpg'
         });
+      } else {
+        formData.append('file', fileToUpload);
       }
 
       formData.append('upload_preset', 'ml_default');
