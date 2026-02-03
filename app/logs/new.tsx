@@ -40,9 +40,11 @@ export default function NewLogScreen() {
     const project = projects.find(p => p.id === formData.projectId);
     if (!project || !project.scheduleData) return '0';
 
+    // 尋找對應日期的進度
     const point = project.scheduleData.find(d => d.date === formData.date);
     if (point) return point.progress.toString();
 
+    // 如果沒精確日期，找最接近的一個
     const sorted = [...project.scheduleData].sort((a, b) => a.date.localeCompare(b.date));
     let closest = 0;
     for (const d of sorted) {
@@ -99,11 +101,12 @@ export default function NewLogScreen() {
       if (!result.canceled) {
         setIsUploading(true);
         const uploadPromises = result.assets.map(async (asset) => {
-          return await uploadPhoto(asset.uri);
+          const url = await uploadPhoto(asset.uri);
+          return url;
         });
         const urls = await Promise.all(uploadPromises);
         setFormData(prev => ({ ...prev, photos: [...prev.photos, ...urls] }));
-        toast.success('照片上傳完成');
+        toast.success('照片上傳成功');
       }
     } catch (error) {
       console.error(error);
@@ -119,10 +122,21 @@ export default function NewLogScreen() {
 
   // --- Submit ---
   const handleSubmit = async () => {
-    if (isSubmitting) return; // 防止重複提交
-    if (!formData.projectId) return Alert.alert('提示', '請選擇專案');
-    if (!formData.content.trim()) return Alert.alert('提示', '請輸入施工內容');
-    if (isUploading) return Alert.alert('請稍候', '照片還在上傳中，請等候處理完畢。');
+    if (isSubmitting) return;
+
+    // 必填欄位驗證
+    if (!formData.projectId) {
+      Alert.alert('資料缺漏', '請先選擇專案。');
+      return;
+    }
+    if (!formData.content || formData.content.trim() === '') {
+      Alert.alert('資料缺漏', '請填寫「施工內容摘要」才能儲存。');
+      return;
+    }
+    if (isUploading) {
+      Alert.alert('請耐心等候', '照片正在上傳中，請等候處理完畢再儲存。');
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -135,13 +149,13 @@ export default function NewLogScreen() {
         actualProgress: formData.actualProgress
       });
 
-      // 成功提示彈窗
-      Alert.alert('✅ 儲存成功', '您的施工日誌已成功送出審核。', [
-        { text: '確定', onPress: () => router.replace('/logs') }
+      // 成功回饋與跳轉
+      Alert.alert('✅ 儲存成功', '施工日誌已儲存並提交審核', [
+        { text: '確定', onPress: () => router.back() }
       ]);
     } catch (error: any) {
-      console.error(error);
-      Alert.alert('❌ 儲存失敗', error.message || '發生未知錯誤，請重試。');
+      console.error("Submit Error:", error);
+      Alert.alert('❌ 儲存失敗', error.message || '連線錯誤或權限不足，請稍後再試。');
     } finally {
       setIsSubmitting(false);
     }
@@ -150,20 +164,20 @@ export default function NewLogScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{
-        title: '填寫新日誌',
+        title: '新增施工日誌',
         headerStyle: { backgroundColor: '#002147' },
         headerTintColor: '#fff',
-        headerLeft: () => null, // 移除預設返回
+        headerLeft: () => null,
         headerRight: () => (
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 5 }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 10 }}>
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
         )
       }} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 60 }}>
 
-          <Text style={styles.label}>🏗️ 選擇專案</Text>
+          <Text style={styles.label}>🏗️ 所屬專案 <Text style={{ color: 'red' }}>*</Text></Text>
           <TouchableOpacity style={styles.input} onPress={() => setShowProjectPicker(!showProjectPicker)}>
             <Text style={{ color: formData.project ? '#333' : '#999', fontSize: 16 }}>{formData.project || '點擊選擇專案...'}</Text>
             <Ionicons name="chevron-down" size={20} color="#666" />
@@ -183,13 +197,13 @@ export default function NewLogScreen() {
 
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.label}>📅 日期</Text>
+              <Text style={styles.label}>📅 施工日期</Text>
               <View style={[styles.input, { backgroundColor: '#f0f0f0' }]}>
                 <Text style={{ fontSize: 16 }}>{formData.date}</Text>
               </View>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>☀️ 天氣</Text>
+              <Text style={styles.label}>☀️ 天氣狀況</Text>
               <View style={styles.weatherGroup}>
                 {['晴', '陰', '雨'].map(w => (
                   <TouchableOpacity key={w} style={[styles.weatherBtn, formData.weather === w && styles.weatherBtnActive]} onPress={() => setFormData(prev => ({ ...prev, weather: w }))}>
@@ -200,12 +214,12 @@ export default function NewLogScreen() {
             </View>
           </View>
 
-          {/* 進度欄位 */}
+          {/* 進度資訊 */}
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>📈 預定進度 (%)</Text>
               <View style={[styles.input, { backgroundColor: '#E3F2FD' }]}>
-                <Text style={{ color: '#002147', fontWeight: 'bold' }}>{scheduledProgress}%</Text>
+                <Text style={{ color: '#002147', fontWeight: 'bold', fontSize: 16 }}>{scheduledProgress}%</Text>
               </View>
             </View>
             <View style={{ flex: 1 }}>
@@ -221,48 +235,48 @@ export default function NewLogScreen() {
           </View>
 
           {/* 施工內容摘要 */}
-          <Text style={styles.label}>📝 施工內容摘要</Text>
+          <Text style={styles.label}>📝 施工內容摘要 <Text style={{ color: 'red' }}>*</Text></Text>
           <TextInput
             style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
             multiline
-            placeholder="請詳細描述今日施工進度與項目..."
+            placeholder="請詳細填寫今日主要施工項目與進度..."
             value={formData.content}
             onChangeText={t => setFormData(prev => ({ ...prev, content: t }))}
           />
 
           {/* 出工區塊 */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.label}>👷 出工 (工種/人數)</Text>
-            <TouchableOpacity onPress={addPersonnel}><Ionicons name="add-circle" size={26} color="#C69C6D" /></TouchableOpacity>
+            <Text style={styles.label}>👷 出工情形 (工種/人數)</Text>
+            <TouchableOpacity onPress={addPersonnel}><Ionicons name="add-circle" size={28} color="#C69C6D" /></TouchableOpacity>
           </View>
           {formData.personnelList.map((item) => (
             <View key={item.id} style={styles.listCard}>
               <View style={styles.listRow}>
-                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="工種名稱" value={item.type} onChangeText={t => updatePersonnel(item.id, 'type', t)} />
+                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="例如：水電工" value={item.type} onChangeText={t => updatePersonnel(item.id, 'type', t)} />
                 <TextInput style={[styles.subInput, { flex: 1, marginLeft: 10 }]} placeholder="人數" keyboardType="numeric" value={item.count.toString()} onChangeText={t => updatePersonnel(item.id, 'count', parseInt(t) || 0)} />
                 <TouchableOpacity style={{ marginLeft: 10 }} onPress={() => removePersonnel(item.id)}><Ionicons name="trash" size={22} color="#FF6B6B" /></TouchableOpacity>
               </View>
-              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註 (例如：加班時間)" value={item.note} onChangeText={t => updatePersonnel(item.id, 'note', t)} />
+              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註 (例如：加班 2 小時)" value={item.note} onChangeText={t => updatePersonnel(item.id, 'note', t)} />
             </View>
           ))}
 
           {/* 機具區塊 */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.label}>🚜 機具 (名稱/數量)</Text>
-            <TouchableOpacity onPress={addMachine}><Ionicons name="add-circle" size={26} color="#C69C6D" /></TouchableOpacity>
+            <Text style={styles.label}>🚜 機具使用 (名稱/數量)</Text>
+            <TouchableOpacity onPress={addMachine}><Ionicons name="add-circle" size={28} color="#C69C6D" /></TouchableOpacity>
           </View>
           {formData.machineList.map((item) => (
             <View key={item.id} style={styles.listCard}>
               <View style={styles.listRow}>
-                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="機具名稱" value={item.name} onChangeText={t => updateMachine(item.id, 'name', t)} />
+                <TextInput style={[styles.subInput, { flex: 2 }]} placeholder="例如：挖掘機" value={item.name} onChangeText={t => updateMachine(item.id, 'name', t)} />
                 <TextInput style={[styles.subInput, { flex: 1, marginLeft: 10 }]} placeholder="數量" keyboardType="numeric" value={item.quantity.toString()} onChangeText={t => updateMachine(item.id, 'quantity', parseInt(t) || 0)} />
                 <TouchableOpacity style={{ marginLeft: 10 }} onPress={() => removeMachine(item.id)}><Ionicons name="trash" size={22} color="#FF6B6B" /></TouchableOpacity>
               </View>
-              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註 (例如：進場/維修)" value={item.note} onChangeText={t => updateMachine(item.id, 'note', t)} />
+              <TextInput style={[styles.subInput, { marginTop: 8 }]} placeholder="備註 (例如：維修中)" value={item.note} onChangeText={t => updateMachine(item.id, 'note', t)} />
             </View>
           ))}
 
-          <Text style={styles.label}>📸 施工照片 (多選)</Text>
+          <Text style={styles.label}>📸 施工照片 (多張上傳)</Text>
           <View style={styles.photoGrid}>
             {formData.photos.map((url, idx) => (
               <View key={idx} style={styles.photoItem}>
@@ -271,16 +285,16 @@ export default function NewLogScreen() {
               </View>
             ))}
             <TouchableOpacity style={styles.photoAdd} onPress={pickImages} disabled={isUploading}>
-              {isUploading ? <ActivityIndicator color="#C69C6D" /> : <Ionicons name="camera" size={32} color="#999" />}
-              <Text style={{ color: '#999', fontSize: 11, marginTop: 4 }}>{isUploading ? '正在上傳' : `新增照片`}</Text>
+              {isUploading ? <ActivityIndicator color="#C69C6D" /> : <Ionicons name="camera" size={32} color="#AAA" />}
+              <Text style={{ color: '#AAA', fontSize: 11, marginTop: 4 }}>{isUploading ? '上傳中...' : '選取照片'}</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.label}>⚠️ 異常狀況報告 / 備註</Text>
+          <Text style={styles.label}>⚠️ 異常狀況 / 備忘錄</Text>
           <TextInput
             style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
             multiline
-            placeholder="若有停工、缺失或特殊狀況請在此說明..."
+            placeholder="若有缺失、停工或特殊狀況說明..."
             value={formData.notes}
             onChangeText={t => setFormData(prev => ({ ...prev, notes: t }))}
           />
@@ -290,17 +304,17 @@ export default function NewLogScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.submitBtn, (isUploading || isSubmitting) && { backgroundColor: '#ccc' }]}
+          style={[styles.submitBtn, (isUploading || isSubmitting) && { backgroundColor: '#AAA' }]}
           onPress={handleSubmit}
           disabled={isUploading || isSubmitting}
         >
           {isSubmitting ? (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
-              <Text style={styles.submitBtnText}>正在處理中...</Text>
+              <Text style={styles.submitBtnText}>日誌處理中...</Text>
             </View>
           ) : (
-            <Text style={styles.submitBtnText}>儲存日誌並提交審核</Text>
+            <Text style={styles.submitBtnText}>儲存施工日誌</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -309,37 +323,37 @@ export default function NewLogScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#FFF' },
   body: { padding: 20 },
-  label: { fontSize: 13, fontWeight: 'bold', color: '#002147', marginTop: 18, marginBottom: 6 },
+  label: { fontSize: 14, fontWeight: 'bold', color: '#002147', marginTop: 18, marginBottom: 8 },
   input: {
     borderWidth: 1,
     borderColor: '#E0E4E8',
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: '#F9FBFC',
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: '#F9FAFB',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center'
   },
-  pickerBox: { borderWidth: 1, borderColor: '#eee', borderRadius: 10, marginTop: 5, backgroundColor: '#fff', elevation: 3 },
-  pickerItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  pickerBox: { borderWidth: 1, borderColor: '#EEE', borderRadius: 12, marginTop: 5, backgroundColor: '#FFF', elevation: 4 },
+  pickerItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   row: { flexDirection: 'row' },
-  weatherGroup: { flexDirection: 'row', gap: 6 },
-  weatherBtn: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#eee', borderRadius: 8, alignItems: 'center' },
+  weatherGroup: { flexDirection: 'row', gap: 8 },
+  weatherBtn: { flex: 1, paddingVertical: 12, borderWidth: 1, borderColor: '#EEE', borderRadius: 10, alignItems: 'center' },
   weatherBtnActive: { backgroundColor: '#C69C6D', borderColor: '#C69C6D' },
-  weatherText: { color: '#666', fontSize: 13 },
-  weatherTextActive: { color: '#fff', fontWeight: 'bold' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 22, marginBottom: 8 },
-  listCard: { backgroundColor: '#F5F7FA', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#E8ECEF' },
+  weatherText: { color: '#666', fontSize: 14 },
+  weatherTextActive: { color: '#FFF', fontWeight: 'bold' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 10 },
+  listCard: { backgroundColor: '#F3F5F7', padding: 14, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' },
   listRow: { flexDirection: 'row', alignItems: 'center' },
-  subInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, fontSize: 14 },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-  photoItem: { width: 85, height: 85, borderRadius: 10, overflow: 'hidden', position: 'relative' },
+  subInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 10, fontSize: 15 },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
+  photoItem: { width: 90, height: 90, borderRadius: 12, overflow: 'hidden', position: 'relative' },
   photoImg: { width: '100%', height: '100%' },
-  photoDelete: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 11 },
-  photoAdd: { width: 85, height: 85, borderRadius: 10, borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', backgroundColor: '#fafafa' },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: '#eee', backgroundColor: '#fff' },
-  submitBtn: { backgroundColor: '#C69C6D', padding: 16, borderRadius: 12, alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  submitBtnText: { color: '#fff', fontSize: 17, fontWeight: 'bold' }
+  photoDelete: { position: 'absolute', top: 3, right: 3, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 12 },
+  photoAdd: { width: 90, height: 90, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  footer: { padding: 20, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FFF' },
+  submitBtn: { backgroundColor: '#C69C6D', padding: 18, borderRadius: 14, alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 5 },
+  submitBtnText: { color: '#FFF', fontSize: 17, fontWeight: 'bold' }
 });
