@@ -1,5 +1,6 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Modal, ActivityIndicator, Dimensions, StatusBar, Platform, TextInput, KeyboardAvoidingView } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Dimensions, StatusBar, Platform, TextInput, KeyboardAvoidingView, Alert } from 'react-native';
+import { useRouter, Stack, useNavigation } from 'expo-router';
+import { DrawerActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, query, getDocs, orderBy, addDoc } from 'firebase/firestore';
@@ -20,7 +21,8 @@ interface Announcement {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { logout, user } = useUser();
+  const navigation = useNavigation();
+  const { user } = useUser();
   const { projects } = useProjects();
   const { logs } = useLogs();
 
@@ -35,9 +37,7 @@ export default function DashboardScreen() {
   }
 
   const isAdmin = user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw';
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [isLoadingNotices, setIsLoadingNotices] = useState(false);
+  const [announcements, setAnnouncements] = useState<Announcement[] | undefined>(undefined);
 
   // 公告發布 Modal
   const [isAnnounceModalVisible, setAnnounceModalVisible] = useState(false);
@@ -46,7 +46,6 @@ export default function DashboardScreen() {
   // 2. 獲取公告 (Load Announcements)
   const fetchNotices = async () => {
     try {
-      setIsLoadingNotices(true);
       const q = query(collection(db, 'notices'), orderBy('date', 'desc'));
       const querySnapshot = await getDocs(q);
       const list: Announcement[] = [];
@@ -56,8 +55,7 @@ export default function DashboardScreen() {
       setAnnouncements(list);
     } catch (err) {
       console.error('Fetch notices error:', err);
-    } finally {
-      setIsLoadingNotices(false);
+      setAnnouncements([]); // 發生錯誤時設為空陣列以停止轉圈
     }
   };
 
@@ -70,19 +68,16 @@ export default function DashboardScreen() {
     const safeProjects = projects || [];
     const safeLogs = logs || [];
 
-    // 計算健康度：假設狀態非 'behind' 則正常
     let normalCount = 0;
     let behindCount = 0;
 
     safeProjects.forEach(p => {
-      // 這裡可以根據實際 logic 判定，目前先以 mock logic 分類
       if (p.status === 'behind') behindCount++;
       else normalCount++;
     });
 
     const activeProjects = safeProjects.filter(p => p.executionStatus === 'construction').length;
 
-    // 異常數量判定
     const issueCount = safeLogs.filter(log =>
       log.status === 'issue' || (log.issues && String(log.issues).trim().length > 0)
     ).length;
@@ -91,16 +86,6 @@ export default function DashboardScreen() {
   }, [projects, logs]);
 
   // 4. 操作邏輯 (Actions)
-  const navTo = (path: string) => {
-    setMenuVisible(false);
-    if (path === '/') {
-      logout();
-      router.replace('/');
-    } else {
-      router.push(path as any);
-    }
-  };
-
   const handleAddAnnouncement = async () => {
     if (!announceForm.title.trim() || !announceForm.content.trim()) {
       return Alert.alert('提示', '請填寫標題與內容');
@@ -129,7 +114,6 @@ export default function DashboardScreen() {
 
     return (
       <View style={styles.chartSection}>
-        {/* Mock Pie Chart (以圓形 View 代表) */}
         <View style={styles.chartPlaceholder}>
           <View style={[styles.pieSegment, { backgroundColor: '#52C41A', transform: [{ scale: 1 }] }]} />
           {stats.behindCount > 0 && (
@@ -162,7 +146,10 @@ export default function DashboardScreen() {
         headerStyle: { backgroundColor: '#002147' },
         headerTintColor: '#fff',
         headerLeft: () => (
-          <TouchableOpacity onPress={() => setMenuVisible(true)} style={{ marginLeft: 15 }}>
+          <TouchableOpacity
+            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+            style={{ marginLeft: 16 }}
+          >
             <Ionicons name="menu" size={28} color="#fff" />
           </TouchableOpacity>
         )
@@ -174,7 +161,7 @@ export default function DashboardScreen() {
           👋 你好, <Text style={styles.userName}>{user.name}</Text>
         </Text>
 
-        {/* 公告欄 (Restore) */}
+        {/* 公告欄 (Fix Blocking Loading) */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>系統公告</Text>
           {isAdmin && (
@@ -186,9 +173,11 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.noticeCard}>
-          {isLoadingNotices ? (
-            <ActivityIndicator color="#C69C6D" />
-          ) : announcements.length > 0 ? (
+          {announcements === undefined ? (
+            <ActivityIndicator size="small" color="#C69C6D" style={{ marginTop: 10 }} />
+          ) : announcements.length === 0 ? (
+            <Text style={styles.emptyText}>暫無最新公告</Text>
+          ) : (
             <View>
               <View style={styles.noticeTop}>
                 <Text style={styles.noticeLabel}>最新</Text>
@@ -197,18 +186,16 @@ export default function DashboardScreen() {
               <Text style={styles.noticeTitle}>{announcements[0].title}</Text>
               <Text style={styles.noticeContent} numberOfLines={2}>{announcements[0].content}</Text>
             </View>
-          ) : (
-            <Text style={styles.emptyText}>暫無最新公告</Text>
           )}
         </View>
 
-        {/* 專案進度總覽 (Restore) */}
+        {/* 專案進度總覽 */}
         <Text style={styles.sectionTitle}>專案狀態</Text>
         <View style={styles.chartCard}>
           {renderHealthChart()}
         </View>
 
-        {/* 異常警報卡片 (Retain & Refine) */}
+        {/* 異常警報卡片 */}
         {stats.issueCount > 0 && (
           <TouchableOpacity style={styles.alertCard} onPress={() => router.push('/logs')}>
             <Ionicons name="alert-circle" size={28} color="#fff" />
@@ -221,54 +208,6 @@ export default function DashboardScreen() {
         )}
 
       </ScrollView>
-
-      {/* 側邊選單 Modal (Side Menu) */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.sideMenu}>
-            <SafeAreaView style={{ flex: 1 }}>
-              <View style={styles.menuHeader}>
-                <Text style={styles.menuTitle}>導覽選單</Text>
-                <TouchableOpacity onPress={() => setMenuVisible(false)}>
-                  <Ionicons name="close" size={30} color="#fff" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.menuList}>
-                <TouchableOpacity style={styles.menuItem} onPress={() => navTo('/dashboard')}>
-                  <Ionicons name="home" size={22} color="#C69C6D" />
-                  <Text style={styles.menuText}>首頁戰情室</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => navTo('/projects/')}>
-                  <Ionicons name="business" size={22} color="#C69C6D" />
-                  <Text style={styles.menuText}>工程專案管理</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => navTo('/logs')}>
-                  <Ionicons name="document-text" size={22} color="#C69C6D" />
-                  <Text style={styles.menuText}>施工日誌管理</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => navTo('/sop')}>
-                  <Ionicons name="library" size={22} color="#C69C6D" />
-                  <Text style={styles.menuText}>文件資料庫</Text>
-                </TouchableOpacity>
-                {isAdmin && (
-                  <TouchableOpacity style={styles.menuItem} onPress={() => navTo('/personnel')}>
-                    <Ionicons name="people" size={22} color="#C69C6D" />
-                    <Text style={styles.menuText}>人員帳號管理</Text>
-                  </TouchableOpacity>
-                )}
-
-                <View style={{ flex: 1 }} />
-
-                <TouchableOpacity style={styles.logoutBtn} onPress={() => navTo('/')}>
-                  <Ionicons name="log-out" size={22} color="#fff" />
-                  <Text style={styles.logoutText}>登出系統</Text>
-                </TouchableOpacity>
-              </View>
-            </SafeAreaView>
-          </View>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} />
-        </View>
-      </Modal>
 
       {/* 公告發布 Modal */}
       <Modal visible={isAnnounceModalVisible} animationType="slide" transparent>
@@ -322,7 +261,7 @@ const styles = StyleSheet.create({
   noticeDate: { color: '#999', fontSize: 12 },
   noticeTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 5 },
   noticeContent: { fontSize: 14, color: '#666', lineHeight: 20 },
-  emptyText: { color: '#999', textAlign: 'center', marginVertical: 10 },
+  emptyText: { color: '#9CA3AF', textAlign: 'center', marginVertical: 10, marginTop: 8 },
   chartCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, elevation: 2 },
   chartSection: { flexDirection: 'row', alignItems: 'center' },
   chartPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
@@ -338,15 +277,6 @@ const styles = StyleSheet.create({
   alertInfo: { flex: 1, marginLeft: 15 },
   alertTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   alertSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
-  modalOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.6)' },
-  sideMenu: { width: 280, backgroundColor: '#002147', height: '100%', padding: 25 },
-  menuHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 },
-  menuTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
-  menuList: { flex: 1 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-  menuText: { color: '#fff', fontSize: 17, marginLeft: 15 },
-  logoutBtn: { backgroundColor: '#FF6B6B', padding: 15, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  logoutText: { color: '#fff', fontWeight: 'bold', marginLeft: 10 },
   noticeModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   noticeModalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25, minHeight: 450 },
   noticeModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
