@@ -15,6 +15,7 @@ export interface LaborItem {
   type: string;           // 工種/公司
   count: number;          // 人數
   work?: string;          // 工作內容
+  note?: string;          // 備註
 }
 
 export interface LogIssue {
@@ -27,19 +28,19 @@ export interface LogEntry {
   id: string;
   date: string;
   project: string;
-  projectId?: string;      // 新增 projectId 以便關聯
+  projectId?: string;
   weather: string;
-  content: string;        // 施工項目
-  machines?: MachineItem[];    // 機具列表
-  labor?: LaborItem[];         // 人力列表
+  content: string;
+  machineList?: MachineItem[];    // 改名
+  personnelList?: LaborItem[];    // 改名
   plannedProgress?: number;
   reporter: string;
   status: 'draft' | 'pending_review' | 'approved' | 'rejected';
   photos?: string[];
-  notes?: string;         // 新增備註欄位
-  reporterId?: string;    // 新增提交者 ID 用於權限控管
-  actualProgress?: string | number; // 實際累計進度
-  issues?: LogIssue[];     // 異常與問題回報
+  notes?: string;
+  reporterId?: string;
+  actualProgress?: string | number;
+  issues?: LogIssue[];
 }
 
 interface LogContextType {
