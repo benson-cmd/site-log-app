@@ -35,7 +35,7 @@ export interface LogEntry {
   personnelList?: LaborItem[];    // 改名
   plannedProgress?: number;
   reporter: string;
-  status: 'draft' | 'pending_review' | 'approved' | 'rejected';
+  status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'issue';
   photos?: string[];
   issues?: string;           // 統一備註欄位名為 issues (字串)
   issueList?: LogIssue[];    // 原本的列表改名為 issueList
@@ -78,13 +78,7 @@ export const LogProvider = ({ children }: { children: ReactNode }) => {
       if (Platform.OS !== 'web') {
         const response = await fetch(fileToUpload);
         const blob = await response.blob();
-
-        // @ts-ignore
-        formData.append('file', {
-          uri: fileToUpload,
-          type: 'image/jpeg',
-          name: fileName || 'upload.jpg'
-        });
+        formData.append('file', blob, fileName || 'upload.jpg');
       } else {
         formData.append('file', fileToUpload);
       }

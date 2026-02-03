@@ -24,7 +24,7 @@ export default function EditLogScreen() {
     personnelList: [],
     machineList: [],
     photos: [],
-    issues: '',                 // 字串型別的備註
+    issues: '',
     actualProgress: '',
     reporter: ''
   });
@@ -45,7 +45,7 @@ export default function EditLogScreen() {
         personnelList: existingLog.personnelList || (existingLog as any).labor || [],
         machineList: existingLog.machineList || (existingLog as any).machines || [],
         photos: existingLog.photos || [],
-        issues: existingLog.issues || (existingLog as any).notes || '', // 相容舊版 notes
+        issues: existingLog.issues || (existingLog as any).notes || '',
         actualProgress: existingLog.actualProgress?.toString() || ''
       });
       setLoading(false);
@@ -141,8 +141,8 @@ export default function EditLogScreen() {
   // --- 管理員操作 ---
   const handleResolveIssue = async () => {
     try {
-      await updateLog(id as string, { issues: '' });
-      setFormData(prev => ({ ...prev, issues: '' }));
+      await updateLog(id as string, { issues: '', status: 'pending_review' });
+      setFormData(prev => ({ ...prev, issues: '', status: 'pending_review' }));
       Alert.alert('成功', '異常狀況已解除列管');
     } catch (e) {
       Alert.alert('錯誤', '解除失敗');
@@ -157,7 +157,7 @@ export default function EditLogScreen() {
         { text: '確定', onPress: () => router.back() }
       ]);
     } catch (e) {
-      Alert.alert('核准失敗', '連線異常，請稍後再試。');
+      Alert.alert('核准失敗', '連線異常');
     } finally {
       setIsSubmitting(false);
     }
@@ -167,11 +167,11 @@ export default function EditLogScreen() {
     try {
       setIsSubmitting(true);
       await updateLog(id as string, { status: 'rejected' });
-      Alert.alert('⛔ 已退回', '日誌已退回給填寫人修正。', [
+      Alert.alert('⛔ 已退回修正', '日誌已退回給填寫人。', [
         { text: '確定', onPress: () => router.back() }
       ]);
     } catch (e) {
-      Alert.alert('操作失敗', '連線異常，請稍後再試。');
+      Alert.alert('操作失敗', '連線異常');
     } finally {
       setIsSubmitting(false);
     }
@@ -181,22 +181,34 @@ export default function EditLogScreen() {
   const handleSubmit = async () => {
     if (isSubmitting) return;
 
-    if (!formData.content?.trim()) return Alert.alert('資料缺漏', '施工內容摘要為必填');
+    // A. 必填驗證
+    if (!formData.content || formData.content.trim() === '') {
+      Alert.alert('資料缺漏', '請填寫「施工內容摘要」才能儲存。');
+      return;
+    }
     if (isUploading) return Alert.alert('請等待', '照片上傳中');
 
     try {
       setIsSubmitting(true);
+
+      // B. 處理狀態與異常邏輯
+      const hasIssue = formData.issues && formData.issues.trim().length > 0;
+      // 若原狀態是 issue 且已清空，則回歸為 pending_review；若目前有值，則設為 issue
+      const finalStatus = hasIssue ? 'issue' : (formData.status === 'issue' ? 'pending_review' : formData.status);
+
       await updateLog(id as string, {
         ...formData,
-        status: (formData.status === 'rejected' ? 'pending_review' : formData.status) as any,
+        issues: formData.issues ? formData.issues.trim() : '',
+        status: finalStatus as any,
         plannedProgress: parseFloat(scheduledProgress) || 0,
       });
 
-      Alert.alert('✅ 修改成功', '日誌資料已更新並提交。', [
+      // C. 成功提示與跳轉
+      Alert.alert('成功', '修改已儲存', [
         { text: '確定', onPress: () => router.back() }
       ]);
     } catch (error: any) {
-      Alert.alert('❌ 儲存失敗', error.message || '請檢查網路連線');
+      Alert.alert('儲存失敗', error.message || '請檢查網路連線');
     } finally {
       setIsSubmitting(false);
     }
@@ -207,8 +219,9 @@ export default function EditLogScreen() {
       <Stack.Screen options={{
         title: '編輯日誌',
         presentation: 'modal',
+        headerLeft: () => null,
         headerRight: () => (
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 15 }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 15, padding: 8 }}>
             <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
         ),

@@ -109,7 +109,7 @@ export default function LogsScreen() {
     return (
       <View style={styles.card}>
         <View style={styles.cardTopStrip}>
-          {hasIssues && (
+          {item.issues && item.issues.trim().length > 0 && (
             <View style={styles.issueBadge}>
               <Ionicons name="warning" size={14} color="#fff" />
               <Text style={styles.issueBadgeText}>⚠️ 異常列管</Text>

@@ -66,15 +66,13 @@ export default function DashboardScreen() {
 
   // 2. 升級版統計：異常匯總
   const allPendingIssues = useMemo(() => {
-    return logs.reduce((acc: any[], log) => {
-      if (log.issues && Array.isArray(log.issues)) {
-        const pending = log.issues
-          .filter((i: any) => i.status === 'pending')
-          .map(i => ({ ...i, projectName: log.project, logDate: log.date }));
-        return [...acc, ...pending];
-      }
-      return acc;
-    }, []);
+    return logs
+      .filter(log => log.status === 'issue' || (log.issues && log.issues.trim().length > 0))
+      .map(log => ({
+        projectName: log.project,
+        logDate: log.date,
+        content: log.issues || log.content || '未註明異常'
+      }));
   }, [logs]);
 
   const totalPendingIssues = allPendingIssues.length;

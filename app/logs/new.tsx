@@ -25,7 +25,7 @@ export default function NewLogScreen() {
     personnelList: [] as LaborItem[],
     machineList: [] as MachineItem[],
     photos: [] as string[],
-    issues: '',                 // 改名為 issues
+    issues: '',
     actualProgress: '',
     reporter: user?.name || '使用者'
   });
@@ -115,23 +115,35 @@ export default function NewLogScreen() {
   const handleSubmit = async () => {
     if (isSubmitting) return;
 
-    if (!formData.projectId) return Alert.alert('提示', '請先選擇專案');
-    if (!formData.content.trim()) return Alert.alert('提示', '施工內容摘要為必填');
-    if (isUploading) return Alert.alert('請稍候', '照片還在上傳中');
+    // A. 必填驗證
+    if (!formData.projectId) return Alert.alert('資料缺漏', '請選擇專案');
+    if (!formData.content || formData.content.trim() === '') {
+      Alert.alert('資料缺漏', '請填寫「施工內容摘要」才能儲存。');
+      return;
+    }
+    if (isUploading) return Alert.alert('請稍候', '照片正在上傳中');
 
     try {
       setIsSubmitting(true);
+
+      // B. 處理異常狀態與 Status
+      const hasIssue = formData.issues && formData.issues.trim().length > 0;
+      const finalStatus = hasIssue ? 'issue' : 'pending_review';
+
       await addLog({
         ...formData,
-        status: 'pending_review',
+        issues: formData.issues ? formData.issues.trim() : '',
+        status: finalStatus as any,
         reporterId: user?.uid,
         plannedProgress: parseFloat(scheduledProgress) || 0,
       });
 
-      Alert.alert('成功', '施工日誌已儲存並提交審核', [
+      // C. 成功提示與跳轉
+      Alert.alert('成功', '施工日誌已儲存並提交', [
         { text: '確定', onPress: () => router.back() }
       ]);
     } catch (e: any) {
+      console.error(e);
       Alert.alert('儲存失敗', e.message || '發生未知錯誤');
     } finally {
       setIsSubmitting(false);
@@ -143,8 +155,9 @@ export default function NewLogScreen() {
       <Stack.Screen options={{
         title: '新增日誌',
         presentation: 'modal',
+        headerLeft: () => null,
         headerRight: () => (
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 15 }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 15, padding: 8 }}>
             <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
         ),
