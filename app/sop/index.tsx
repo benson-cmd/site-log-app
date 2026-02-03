@@ -206,23 +206,43 @@ export default function SOPScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#002147" />
 
       <View style={styles.tabsWrapper}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
-          <TouchableOpacity
-            style={[styles.tab, activeCategory === '全部' && styles.tabActive]}
-            onPress={() => setActiveCategory('全部')}
-          >
-            <Text style={[styles.tabText, activeCategory === '全部' && styles.tabTextActive]}>全部</Text>
-          </TouchableOpacity>
-          {CATEGORIES.map(cat => (
+        {Platform.OS === 'web' ? (
+          <View style={styles.webTabsContainer}>
             <TouchableOpacity
-              key={cat}
-              style={[styles.tab, activeCategory === cat && styles.tabActive]}
-              onPress={() => setActiveCategory(cat)}
+              style={[styles.tab, activeCategory === '全部' && styles.tabActive]}
+              onPress={() => setActiveCategory('全部')}
             >
-              <Text style={[styles.tabText, activeCategory === cat && styles.tabTextActive]}>{cat}</Text>
+              <Text style={[styles.tabText, activeCategory === '全部' && styles.tabTextActive]}>全部</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+            {CATEGORIES.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.tab, activeCategory === cat && styles.tabActive]}
+                onPress={() => setActiveCategory(cat)}
+              >
+                <Text style={[styles.tabText, activeCategory === cat && styles.tabTextActive]}>{cat}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
+            <TouchableOpacity
+              style={[styles.tab, activeCategory === '全部' && styles.tabActive]}
+              onPress={() => setActiveCategory('全部')}
+            >
+              <Text style={[styles.tabText, activeCategory === '全部' && styles.tabTextActive]}>全部</Text>
+            </TouchableOpacity>
+            {CATEGORIES.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.tab, activeCategory === cat && styles.tabActive]}
+                onPress={() => setActiveCategory(cat)}
+              >
+                <Text style={[styles.tabText, activeCategory === cat && styles.tabTextActive]}>{cat}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       <FlatList
@@ -364,7 +384,8 @@ const styles = StyleSheet.create({
   // Tabs
   tabsWrapper: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   tabsContent: { paddingHorizontal: 10, paddingVertical: 12 },
-  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F4F8', marginRight: 10 },
+  webTabsContainer: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 8 },
+  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F4F8', marginRight: Platform.OS === 'web' ? 0 : 10 },
   tabActive: { backgroundColor: '#002147' },
   tabText: { fontSize: 13, color: '#666', fontWeight: '500' },
   tabTextActive: { color: '#fff', fontWeight: 'bold' },
