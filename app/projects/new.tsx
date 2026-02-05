@@ -221,8 +221,18 @@ export default function NewProjectScreen() {
 
     try {
       setIsSubmitting(true);
+
+      const projectData = { ...formData };
+      if (projectData.scheduleFile) {
+        projectData.scheduleFile = {
+          name: projectData.scheduleFile.name,
+          uri: projectData.scheduleFile.uri,
+          mimeType: projectData.scheduleFile.mimeType
+        };
+      }
+
       await addDoc(collection(db, 'projects'), {
-        ...formData,
+        ...projectData,
         contractDuration: formData.duration,
         type: formData.contractType,
         createdAt: new Date().toISOString(),
