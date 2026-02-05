@@ -8,8 +8,11 @@ import { useProjects } from '../../context/ProjectContext';
 import { useLogs } from '../../context/LogContext';
 import * as Linking from 'expo-linking';
 import * as ImagePicker from 'expo-image-picker';
-import { doc, updateDoc } from 'firebase/firestore';
+import * as DocumentPicker from 'expo-document-picker';
+import { doc, updateDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../src/lib/firebase';
+
+const STATUS_OPTIONS = ['未開工', '已開工未進場', '施工中', '完工待驗收', '驗收中', '結案'];
 
 const Tabs = ({ activeTab, setActiveTab }: any) => (
   <View style={styles.tabContainer}>
@@ -46,7 +49,36 @@ export default function ProjectDetailScreen() {
   const [editForm, setEditForm] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // 1. 載入專案資料
+  // Personnel and Dropdown State
+  const [personnelList, setPersonnelList] = useState<any[]>([]);
+  const [showManagerPicker, setShowManagerPicker] = useState(false);
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
+
+  // Calendar State
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [currentDateField, setCurrentDateField] = useState('');
+  const [displayDate, setDisplayDate] = useState(new Date());
+
+  // 2. 載入人員名單
+  useEffect(() => {
+    const fetchPersonnel = async () => {
+      try {
+        const q = query(collection(db, 'personnel'), orderBy('name', 'asc'));
+        const querySnapshot = await getDocs(q);
+        const list: any[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.name) list.push({ id: doc.id, name: data.name, role: data.role });
+        });
+        setPersonnelList(list);
+      } catch (error) {
+        console.error('Failed to fetch personnel:', error);
+      }
+    };
+    fetchPersonnel();
+  }, []);
+
+  // 3. 載入專案資料
   useEffect(() => {
     if (id && projects.length > 0) {
       const p = projects.find(item => item.id === id);
@@ -217,6 +249,79 @@ export default function ProjectDetailScreen() {
     return isNaN(num) ? '0' : num.toLocaleString();
   };
 
+  const formatNumber = (num: string) => {
+    if (!num) return '';
+    return num.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  };
+
+  // Calendar handlers
+  const openCalendar = (field: string) => {
+    setCurrentDateField(field);
+    setDisplayDate(new Date());
+    setCalendarVisible(true);
+  };
+
+  const onSelectDate = (d: number) => {
+    const y = displayDate.getFullYear();
+    const m = displayDate.getMonth() + 1;
+    const dateStr = `${y}-${m < 10 ? '0' + m : m}-${d < 10 ? '0' + d : d}`;
+
+    if (currentDateField === 'awardDate') setEditForm((prev: any) => ({ ...prev, awardDate: dateStr }));
+    else if (currentDateField === 'startDate') setEditForm((prev: any) => ({ ...prev, startDate: dateStr }));
+    else if (currentDateField === 'endDate') setEditForm((prev: any) => ({ ...prev, endDate: dateStr }));
+    else setEditForm((prev: any) => ({ ...prev, [currentDateField]: dateStr }));
+
+    setCalendarVisible(false);
+  };
+
+  const renderCalendarDays = () => {
+    const y = displayDate.getFullYear();
+    const m = displayDate.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const firstDay = new Date(y, m, 1).getDay();
+    const days = [];
+    for (let i = 0; i < firstDay; i++) days.push(<View key={`e-${i}`} style={styles.dayCellEmpty} />);
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(
+        <TouchableOpacity key={i} style={styles.dayCell} onPress={() => onSelectDate(i)}>
+          <Text style={styles.dayText}>{i}</Text>
+        </TouchableOpacity>
+      );
+    }
+    return days;
+  };
+
+  const DateInput = ({ value, field, placeholder = "YYYY-MM-DD" }: any) => (
+    <TouchableOpacity style={styles.dateInput} onPress={() => openCalendar(field)}>
+      <Text style={{ color: value ? '#333' : '#999' }}>{value || placeholder}</Text>
+      <Ionicons name="calendar-outline" size={20} color="#666" />
+    </TouchableOpacity>
+  );
+
+  // Document picker handlers
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true });
+      if (!result.canceled && result.assets) {
+        const newDocs = result.assets.map(asset => ({
+          title: asset.name,
+          name: asset.name,
+          url: asset.uri,
+          type: asset.mimeType || 'file'
+        }));
+        setEditForm((prev: any) => ({ ...prev, documents: [...(prev.documents || []), ...newDocs] }));
+      }
+    } catch (err) {
+      Alert.alert('錯誤', '選取失敗');
+    }
+  };
+
+  const handleRemoveDocument = (index: number) => {
+    const newDocs = [...(editForm.documents || [])];
+    newDocs.splice(index, 1);
+    setEditForm({ ...editForm, documents: newDocs });
+  };
+
   const handleSaveProject = async () => {
     setIsSaving(true);
     try {
@@ -244,20 +349,6 @@ export default function ProjectDetailScreen() {
     const newList = [...(editForm[field] || [])];
     newList.splice(index, 1);
     setEditForm({ ...editForm, [field]: newList });
-  };
-
-  const handleAddDocument = async () => {
-    try {
-      let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
-        allowsEditing: false, quality: 1,
-      });
-      if (!result.canceled) {
-        const newDoc = { title: `文件-${new Date().toISOString().slice(5, 10)}`, url: result.assets[0].uri, type: 'image' };
-        addItemToForm('documents', newDoc);
-        Alert.alert('已選取', '請記得按下儲存以生效');
-      }
-    } catch (e) { }
   };
 
   const displayOriginalAmount = project.originalAmount || (project as any).contractPrice || '$0';
@@ -383,10 +474,7 @@ export default function ProjectDetailScreen() {
             {(project.extensions || []).length === 0 && <Text style={{ color: '#999' }}>尚無展延紀錄</Text>}
           </View>
 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 }}>
-            <Text style={[styles.sectionTitle, { marginTop: 0 }]}>契約與施工圖說</Text>
-            <TouchableOpacity onPress={handleAddDocument}><Text style={{ color: 'blue' }}>+ 新增文件</Text></TouchableOpacity>
-          </View>
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>契約與施工圖說</Text>
 
           {(project.documents || []).map((doc: any, i: number) => (
             <TouchableOpacity key={i} style={styles.docItem} onPress={() => handleOpenDoc(doc.url)}>
@@ -412,31 +500,76 @@ export default function ProjectDetailScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
             <ScrollView style={{ padding: 20, paddingBottom: 50 }}>
 
-              <Text style={styles.groupTitle}>基本資訊</Text>
-              <Text style={styles.inputLabel}>專案名稱</Text>
-              <TextInput style={styles.input} value={editForm.name} onChangeText={t => setEditForm({ ...editForm, name: t })} />
-              <Text style={styles.inputLabel}>專案地點</Text>
-              <TextInput style={styles.input} value={editForm.address} onChangeText={t => setEditForm({ ...editForm, address: t })} />
-              <Text style={styles.inputLabel}>工地主任</Text>
-              <TextInput style={styles.input} value={editForm.manager} onChangeText={t => setEditForm({ ...editForm, manager: t })} />
-              <Text style={styles.inputLabel}>執行狀態 (planning, in-progress, completed)</Text>
-              <TextInput style={styles.input} value={editForm.status} onChangeText={t => setEditForm({ ...editForm, status: t })} />
+              <View style={{ zIndex: 3000 }}>
+                <Text style={styles.groupTitle}>基本資訊</Text>
+                <Text style={styles.inputLabel}>專案名稱</Text>
+                <TextInput style={styles.input} value={editForm.name} onChangeText={t => setEditForm({ ...editForm, name: t })} />
+                <Text style={styles.inputLabel}>專案地點</Text>
+                <TextInput style={styles.input} value={editForm.address} onChangeText={t => setEditForm({ ...editForm, address: t })} />
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1, zIndex: 3000 }}>
+                    <Text style={styles.inputLabel}>工地主任</Text>
+                    <TouchableOpacity style={styles.dropdown} onPress={() => setShowManagerPicker(!showManagerPicker)}>
+                      <Text style={{ color: editForm.manager ? '#333' : '#999' }} numberOfLines={1}>{editForm.manager || '請選擇'}</Text>
+                      <Ionicons name="chevron-down" size={16} color="#666" />
+                    </TouchableOpacity>
+                    {showManagerPicker && (
+                      <View style={styles.dropdownList}>
+                        {personnelList.length > 0 ? personnelList.map(p => (
+                          <TouchableOpacity key={p.id} style={styles.dropdownItem} onPress={() => { setEditForm({ ...editForm, manager: p.name }); setShowManagerPicker(false); }}>
+                            <Text style={styles.dropdownItemText}>{p.name}</Text>
+                          </TouchableOpacity>
+                        )) : <View style={styles.dropdownItem}><Text style={{ color: '#999' }}>無人員資料</Text></View>}
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1, zIndex: 2000 }}>
+                    <Text style={styles.inputLabel}>執行狀態</Text>
+                    <TouchableOpacity style={styles.dropdown} onPress={() => setShowStatusPicker(!showStatusPicker)}>
+                      <Text style={{ color: '#333' }}>{editForm.executionStatus || editForm.status || '未開工'}</Text>
+                      <Ionicons name="chevron-down" size={16} color="#666" />
+                    </TouchableOpacity>
+                    {showStatusPicker && (
+                      <View style={styles.dropdownList}>
+                        {STATUS_OPTIONS.map(s => (
+                          <TouchableOpacity key={s} style={styles.dropdownItem} onPress={() => { setEditForm({ ...editForm, executionStatus: s }); setShowStatusPicker(false); }}>
+                            <Text style={styles.dropdownItemText}>{s}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
 
               <Text style={styles.groupTitle}>時程管理</Text>
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>決標日期</Text><TextInput style={styles.input} value={editForm.awardDate} placeholder="YYYY-MM-DD" onChangeText={t => setEditForm({ ...editForm, awardDate: t })} /></View>
-                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>開工日期</Text><TextInput style={styles.input} value={editForm.startDate} placeholder="YYYY-MM-DD" onChangeText={t => setEditForm({ ...editForm, startDate: t })} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>決標日期</Text>
+                  <DateInput value={editForm.awardDate} field="awardDate" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>開工日期</Text>
+                  <DateInput value={editForm.startDate} field="startDate" />
+                </View>
               </View>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}><Text style={styles.inputLabel}>契約工期(天)</Text><TextInput style={styles.input} value={String(editForm.duration || '')} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, duration: t })} /></View>
-                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>預定竣工日 (會自動重算)</Text><TextInput style={styles.input} value={editForm.endDate} placeholder="YYYY-MM-DD" onChangeText={t => setEditForm({ ...editForm, endDate: t })} /></View>
+                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>預定竣工日</Text><DateInput value={editForm.endDate} field="endDate" /></View>
               </View>
 
               <Text style={styles.groupTitle}>契約金額</Text>
-              <Text style={styles.inputLabel}>原始總價</Text>
-              <TextInput style={styles.input} value={String(editForm.originalAmount || '')} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, originalAmount: t })} />
-              <Text style={styles.inputLabel}>變更後總價</Text>
-              <TextInput style={styles.input} value={String(editForm.amendedAmount || '')} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, amendedAmount: t })} />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>原始總價</Text>
+                  <TextInput style={styles.input} value={formatNumber(String(editForm.originalAmount || ''))} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, originalAmount: t.replace(/,/g, '') })} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>變更後總價</Text>
+                  <TextInput style={styles.input} value={formatNumber(String(editForm.amendedAmount || ''))} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, amendedAmount: t.replace(/,/g, '') })} />
+                </View>
+              </View>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
                 <Text style={styles.groupTitle}>變更設計紀錄</Text>
@@ -466,10 +599,52 @@ export default function ProjectDetailScreen() {
                 </View>
               ))}
 
+              <Text style={styles.groupTitle}>契約與施工圖說</Text>
+              {(editForm.documents || []).map((doc: any, i: number) => (
+                <View key={i} style={styles.fileItem}>
+                  <Ionicons name={doc.type?.includes('pdf') ? 'document-text' : 'image'} size={20} color="#555" />
+                  <Text style={{ flex: 1, marginLeft: 8, fontSize: 14 }}>{doc.title || doc.name}</Text>
+                  <TouchableOpacity onPress={() => handleRemoveDocument(i)}>
+                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.uploadBtn} onPress={handlePickDocument}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ 選擇文件</Text>
+              </TouchableOpacity>
+
               <View style={{ height: 100 }} />
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
+      </Modal>
+
+      {/* Calendar Modal */}
+      <Modal visible={calendarVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.calContent}>
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={() => setDisplayDate(new Date(displayDate.getFullYear(), displayDate.getMonth() - 1, 1))}>
+                <Ionicons name="chevron-back" size={24} color="#333" />
+              </TouchableOpacity>
+              <Text style={styles.monthTitle}>{`${displayDate.getFullYear()}年 ${displayDate.getMonth() + 1}月`}</Text>
+              <TouchableOpacity onPress={() => setDisplayDate(new Date(displayDate.getFullYear(), displayDate.getMonth() + 1, 1))}>
+                <Ionicons name="chevron-forward" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.weekHeader}>
+              {['日', '一', '二', '三', '四', '五', '六'].map(d => (
+                <Text key={d} style={styles.weekText}>{d}</Text>
+              ))}
+            </View>
+            <View style={styles.daysGrid}>
+              {renderCalendarDays()}
+            </View>
+            <TouchableOpacity onPress={() => setCalendarVisible(false)} style={{ marginTop: 20, alignItems: 'center' }}>
+              <Text>取消</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -509,5 +684,26 @@ const styles = StyleSheet.create({
   inputLabel: { marginTop: 10, marginBottom: 5, fontWeight: 'bold', color: '#555' },
   input: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8, fontSize: 16, backgroundColor: '#fafafa' },
   subFormCard: { backgroundColor: '#fff', padding: 10, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 10 },
-  miniInput: { borderWidth: 1, borderColor: '#eee', padding: 8, borderRadius: 5, marginBottom: 5, fontSize: 14 }
+  miniInput: { borderWidth: 1, borderColor: '#eee', padding: 8, borderRadius: 5, marginBottom: 5, fontSize: 14 },
+  // Dropdown
+  dropdown: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fafafa' },
+  dropdownList: { position: 'absolute', top: 45, left: 0, right: 0, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', zIndex: 9999, borderRadius: 6, elevation: 5, maxHeight: 200 },
+  dropdownItem: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  dropdownItemText: { fontSize: 16, color: '#333' },
+  // Date Input
+  dateInput: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fafafa' },
+  // Calendar Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  calContent: { width: 340, backgroundColor: '#fff', padding: 20, borderRadius: 10 },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' },
+  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  weekHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  weekText: { width: 40, textAlign: 'center', color: '#999', fontWeight: 'bold', fontSize: 14 },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayCell: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  dayCellEmpty: { width: 40, height: 40 },
+  dayText: { fontSize: 16 },
+  // File Upload
+  fileItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', padding: 10, borderRadius: 6, marginBottom: 5, borderWidth: 1, borderColor: '#eee' },
+  uploadBtn: { backgroundColor: '#1976D2', padding: 10, borderRadius: 6, alignItems: 'center', marginTop: 10 }
 });
