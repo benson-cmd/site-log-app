@@ -198,10 +198,26 @@ export default function NewProjectScreen() {
     } catch (err) { Alert.alert('錯誤', '選取失敗'); }
   };
 
+  const showAlert = (title: string, message?: string, onOk?: () => void) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}\n${message || ''}`);
+      if (onOk) onOk();
+    } else {
+      Alert.alert(title, message, [{ text: '確定', onPress: onOk }]);
+    }
+  };
+
   // --- 提交 ---
   const handleSubmit = async () => {
-    if (!formData.name.trim()) return Alert.alert('提示', '請輸入專案名稱');
-    if (!formData.manager) return Alert.alert('提示', '請選擇工地主任');
+    console.log('Submit button clicked');
+    console.log('Form Data:', formData);
+
+    if (!formData.name || formData.name.trim() === '') {
+      return showAlert('欄位缺漏', '請填寫「專案名稱」');
+    }
+    if (!formData.manager) {
+      return showAlert('欄位缺漏', '請選擇「工地主任」');
+    }
 
     try {
       setIsSubmitting(true);
@@ -212,9 +228,13 @@ export default function NewProjectScreen() {
         createdAt: new Date().toISOString(),
         createdBy: user?.uid || 'admin'
       });
-      Alert.alert('成功', '專案已建立', [{ text: 'OK', onPress: () => router.back() }]);
+
+      showAlert('成功', '專案已建立', () => {
+        router.back();
+      });
     } catch (error: any) {
-      Alert.alert('錯誤', error.message);
+      console.error('新增失敗:', error);
+      showAlert('錯誤', `建立失敗: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
