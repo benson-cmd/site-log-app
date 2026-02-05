@@ -1,6 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Dimensions, StatusBar, Platform, TextInput, KeyboardAvoidingView, Alert } from 'react-native';
-import { useRouter, Stack, useNavigation } from 'expo-router';
-import { DrawerActions } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, StatusBar, Platform, TextInput, Modal, SafeAreaView, Alert } from 'react-native';
+import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, query, getDocs, orderBy, addDoc } from 'firebase/firestore';
@@ -8,237 +7,235 @@ import { db } from '../../src/lib/firebase';
 import { useUser } from '../../context/UserContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useLogs } from '../../context/LogContext';
-import { toast } from 'sonner';
 
-// Announcement Interface
+// 內建選單 (已加入登出功能)
+const MenuSidebar = ({ visible, onClose, router, onLogout }: any) => {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.menuContent} onStartShouldSetResponder={() => true}>
+          <View>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>導覽選單</Text>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); router.push('/dashboard'); }}>
+              <Ionicons name="home" size={22} color="#fff" style={{ marginRight: 15 }} />
+              <Text style={styles.menuItemText}>首頁</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); router.push('/projects'); }}>
+              <Ionicons name="briefcase" size={22} color="#fff" style={{ marginRight: 15 }} />
+              <Text style={styles.menuItemText}>專案列表</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); router.push('/logs'); }}>
+              <Ionicons name="calendar" size={22} color="#fff" style={{ marginRight: 15 }} />
+              <Text style={styles.menuItemText}>施工紀錄</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); router.push('/sop'); }}>
+              <Ionicons name="library" size={22} color="#fff" style={{ marginRight: 15 }} />
+              <Text style={styles.menuItemText}>SOP資料庫</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); router.push('/personnel'); }}>
+              <Ionicons name="people" size={22} color="#fff" style={{ marginRight: 15 }} />
+              <Text style={styles.menuItemText}>人員管理</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); router.push('/profile'); }}>
+              <Ionicons name="person" size={22} color="#fff" style={{ marginRight: 15 }} />
+              <Text style={styles.menuItemText}>我的檔案</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 登出按鈕 (固定在底部) */}
+          <TouchableOpacity style={styles.logoutBtn} onPress={() => { onClose(); onLogout(); }}>
+            <Ionicons name="log-out-outline" size={22} color="#FF6B6B" style={{ marginRight: 15 }} />
+            <Text style={[styles.menuItemText, { color: '#FF6B6B' }]}>登出系統</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 interface Announcement {
-  id: string;
-  title: string;
-  content: string;
-  date: string;
-  author: string;
+  id: string; title: string; content: string; date: string; author: string;
 }
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
-  const { user } = useUser();
+  const { user, logout } = useUser(); // 取得 logout 函式
   const { projects } = useProjects();
   const { logs } = useLogs();
 
-  // 1. 頂層防呆 Guard (Top-level Protection)
-  if (!user || !projects || !logs) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#002147" />
-        <Text style={styles.loadingText}>資料同步中...</Text>
-      </View>
-    );
-  }
-
-  const isAdmin = user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw';
+  const [menuVisible, setMenuVisible] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[] | undefined>(undefined);
-
-  // 公告發布 Modal
   const [isAnnounceModalVisible, setAnnounceModalVisible] = useState(false);
   const [announceForm, setAnnounceForm] = useState({ title: '', content: '' });
 
-  // 2. 獲取公告 (Load Announcements)
-  const fetchNotices = async () => {
-    try {
-      const q = query(collection(db, 'notices'), orderBy('date', 'desc'));
-      const querySnapshot = await getDocs(q);
-      const list: Announcement[] = [];
-      querySnapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as Announcement);
-      });
-      setAnnouncements(list);
-    } catch (err) {
-      console.error('Fetch notices error:', err);
-      setAnnouncements([]); // 發生錯誤時設為空陣列以停止轉圈
-    }
-  };
+  const isAdmin = user?.role === 'admin' || user?.email === 'wu@dwcc.com.tw';
 
   useEffect(() => {
+    const fetchNotices = async () => {
+      try {
+        const q = query(collection(db, 'notices'), orderBy('date', 'desc'));
+        const querySnapshot = await getDocs(q);
+        const list: Announcement[] = [];
+        querySnapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as Announcement));
+        setAnnouncements(list);
+      } catch (err) {
+        setAnnouncements([]);
+      }
+    };
     fetchNotices();
   }, []);
 
-  // 3. 數據統計邏輯 (Data Stats)
   const stats = useMemo(() => {
     const safeProjects = projects || [];
     const safeLogs = logs || [];
-
     let normalCount = 0;
     let behindCount = 0;
 
     safeProjects.forEach(p => {
-      if (p.status === 'behind') behindCount++;
+      if ((p.status as string) === 'behind') behindCount++;
       else normalCount++;
     });
 
-    const activeProjects = safeProjects.filter(p => p.executionStatus === 'construction').length;
+    const issueCount = safeLogs.filter(log => {
+      const txt = log.issues ? String(log.issues).trim() : '';
+      return log.status === 'issue' || txt.length > 0;
+    }).length;
 
-    const issueCount = safeLogs.filter(log =>
-      log.status === 'issue' || (log.issues && String(log.issues).trim().length > 0)
-    ).length;
-
-    return { normalCount, behindCount, activeProjects, issueCount };
+    return { normalCount, behindCount, issueCount };
   }, [projects, logs]);
 
-  // 4. 操作邏輯 (Actions)
   const handleAddAnnouncement = async () => {
-    if (!announceForm.title.trim() || !announceForm.content.trim()) {
-      return Alert.alert('提示', '請填寫標題與內容');
-    }
+    if (!announceForm.title.trim()) return;
     try {
       await addDoc(collection(db, 'notices'), {
         title: announceForm.title,
         content: announceForm.content,
-        date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
-        author: user.name || '管理員',
-        createdAt: new Date().toISOString()
+        date: new Date().toISOString().split('T')[0],
+        author: user?.name || '管理員',
       });
       setAnnounceModalVisible(false);
       setAnnounceForm({ title: '', content: '' });
-      fetchNotices();
-      toast.success('公告已發布');
-    } catch (err) {
-      Alert.alert('錯誤', '發布失敗');
+    } catch (e) { }
+  };
+
+  const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      if (confirm('確定要登出嗎？')) {
+        logout();
+        router.replace('/');
+      }
+    } else {
+      Alert.alert('登出', '確定要登出系統嗎？', [
+        { text: '取消', style: 'cancel' },
+        { text: '登出', style: 'destructive', onPress: () => { logout(); router.replace('/'); } }
+      ]);
     }
   };
 
-  // 5. 渲染圓餅圖 UI (Manual CSS Pie Chart)
-  const renderHealthChart = () => {
-    const total = stats.normalCount + stats.behindCount || 1;
-    const normalRatio = stats.normalCount / total;
+  if (!user) return <View style={styles.center}><ActivityIndicator size="large" color="#002147" /></View>;
 
-    return (
-      <View style={styles.chartSection}>
-        <View style={styles.chartPlaceholder}>
-          <View style={[styles.pieSegment, { backgroundColor: '#52C41A', transform: [{ scale: 1 }] }]} />
-          {stats.behindCount > 0 && (
-            <View style={[styles.pieSegment, { backgroundColor: '#FF4D4F', position: 'absolute', width: '100%', height: '100%', borderRadius: 100, clipPath: `polygon(50% 50%, 50% 0%, 100% 0%, 100% ${normalRatio * 100}%)` } as any]} />
-          )}
-          <View style={styles.chartInner}>
-            <Text style={styles.chartTotal}>{total}</Text>
-            <Text style={styles.chartLabel}>總專案</Text>
-          </View>
-        </View>
-        <View style={styles.chartLegend}>
-          <View style={styles.legendItem}>
-            <View style={[styles.dot, { backgroundColor: '#52C41A' }]} />
-            <Text style={styles.legendText}>進度正常 ({stats.normalCount})</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.dot, { backgroundColor: '#FF4D4F' }]} />
-            <Text style={styles.legendText}>需注意 ({stats.behindCount})</Text>
-          </View>
+  const renderHealthChart = () => (
+    <View style={styles.chartSection}>
+      <View style={styles.chartPlaceholder}>
+        <View style={[styles.pieSegment, { backgroundColor: '#52C41A', transform: [{ scale: 1 }] }]} />
+        {stats.behindCount > 0 && (
+          <View style={[styles.pieSegment, { backgroundColor: '#FF4D4F', position: 'absolute', width: '100%', height: '100%', borderRadius: 100, opacity: 0.6 }]} />
+        )}
+        <View style={styles.chartInner}>
+          <Text style={styles.chartTotal}>{stats.normalCount + stats.behindCount}</Text>
+          <Text style={styles.chartLabel}>總專案</Text>
         </View>
       </View>
-    );
-  };
+      <View style={styles.chartLegend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.dot, { backgroundColor: '#52C41A' }]} />
+          <Text style={styles.legendText}>進度正常 ({stats.normalCount})</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.dot, { backgroundColor: '#FF4D4F' }]} />
+          <Text style={styles.legendText}>需注意 ({stats.behindCount})</Text>
+        </View>
+      </View>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{
-        headerShown: true,
-        title: 'DW 工程管理系統',
-        headerStyle: { backgroundColor: '#002147' },
-        headerTintColor: '#fff',
-        headerLeft: () => (
-          <TouchableOpacity
-            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-            style={{ marginLeft: 16 }}
-          >
-            <Ionicons name="menu" size={28} color="#fff" />
+      <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle="light-content" backgroundColor="#002147" />
+
+      <MenuSidebar visible={menuVisible} onClose={() => setMenuVisible(false)} router={router} onLogout={handleLogout} />
+
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.customHeader}>
+          <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.iconBtn}>
+            <Ionicons name="menu" size={30} color="#fff" />
           </TouchableOpacity>
-        )
-      }} />
-      <StatusBar barStyle="light-content" />
+          <Text style={styles.headerTitle}>DW 工程管理系統</Text>
+          <View style={{ width: 30 }} />
+        </View>
+      </SafeAreaView>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.welcomeText}>
-          👋 你好, <Text style={styles.userName}>{user.name}</Text>
-        </Text>
+        <Text style={styles.welcomeText}>👋 你好, <Text style={styles.userName}>{user.name}</Text>!</Text>
 
-        {/* 公告欄 (Fix Blocking Loading) */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>系統公告</Text>
+        <View style={styles.rowBetween}>
+          <Text style={styles.sectionTitle}>公告欄</Text>
           {isAdmin && (
-            <TouchableOpacity style={styles.addNoticeBtn} onPress={() => setAnnounceModalVisible(true)}>
-              <Ionicons name="add" size={16} color="#002147" />
-              <Text style={styles.addNoticeText}>新增公告</Text>
+            <TouchableOpacity style={styles.addBtn} onPress={() => setAnnounceModalVisible(true)}>
+              <Text style={styles.addBtnText}>+ 新增公告</Text>
             </TouchableOpacity>
           )}
         </View>
-
-        <View style={styles.noticeCard}>
-          {announcements === undefined ? (
-            <ActivityIndicator size="small" color="#C69C6D" style={{ marginTop: 10 }} />
-          ) : announcements.length === 0 ? (
-            <Text style={styles.emptyText}>暫無最新公告</Text>
+        <View style={styles.card}>
+          {(!announcements || announcements.length === 0) ? (
+            <Text style={{ color: '#999' }}>目前無公告</Text>
           ) : (
             <View>
-              <View style={styles.noticeTop}>
-                <Text style={styles.noticeLabel}>最新</Text>
-                <Text style={styles.noticeDate}>{announcements[0].date}</Text>
-              </View>
               <Text style={styles.noticeTitle}>{announcements[0].title}</Text>
-              <Text style={styles.noticeContent} numberOfLines={2}>{announcements[0].content}</Text>
+              <Text style={styles.noticeDate}>{announcements[0].date} | {announcements[0].author}</Text>
+              <Text numberOfLines={2} style={{ color: '#666' }}>{announcements[0].content}</Text>
             </View>
           )}
         </View>
 
-        {/* 專案進度總覽 */}
-        <Text style={styles.sectionTitle}>專案狀態</Text>
-        <View style={styles.chartCard}>
+        <Text style={styles.sectionTitle}>專案進度總覽</Text>
+        <View style={styles.card}>
           {renderHealthChart()}
-        </View>
 
-        {/* 異常警報卡片 */}
-        {stats.issueCount > 0 && (
-          <TouchableOpacity style={styles.alertCard} onPress={() => router.push('/logs')}>
-            <Ionicons name="alert-circle" size={28} color="#fff" />
-            <View style={styles.alertInfo}>
-              <Text style={styles.alertTitle}>待處理施工異常 ({stats.issueCount})</Text>
-              <Text style={styles.alertSub}>點擊進入施工日誌查看</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
-          </TouchableOpacity>
-        )}
+          {stats.issueCount > 0 && (
+            <TouchableOpacity style={styles.issueBox} onPress={() => router.push('/logs')}>
+              <Text style={styles.issueText}>⚠️ 待處理異常: {stats.issueCount}</Text>
+              <Text style={styles.issueSub}>點擊前往施工日誌查看詳情</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
       </ScrollView>
 
-      {/* 公告發布 Modal */}
-      <Modal visible={isAnnounceModalVisible} animationType="slide" transparent>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.noticeModalOverlay}>
-          <View style={styles.noticeModalContent}>
-            <View style={styles.noticeModalHeader}>
-              <Text style={styles.noticeModalTitle}>發布新公告</Text>
-              <TouchableOpacity onPress={() => setAnnounceModalVisible(false)}>
-                <Ionicons name="close" size={26} color="#333" />
-              </TouchableOpacity>
+      <Modal visible={isAnnounceModalVisible} transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>發布公告</Text>
+            <TextInput style={styles.input} placeholder="標題" value={announceForm.title} onChangeText={t => setAnnounceForm(f => ({ ...f, title: t }))} />
+            <TextInput style={[styles.input, { height: 100 }]} placeholder="內容" multiline value={announceForm.content} onChangeText={t => setAnnounceForm(f => ({ ...f, content: t }))} />
+            <View style={styles.modalBtns}>
+              <TouchableOpacity onPress={() => setAnnounceModalVisible(false)} style={styles.cancelBtn}><Text>取消</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handleAddAnnouncement} style={styles.confirmBtn}><Text style={{ color: '#fff' }}>發布</Text></TouchableOpacity>
             </View>
-            <Text style={styles.inputLabel}>標題</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="請輸入公告標題"
-              value={announceForm.title}
-              onChangeText={t => setAnnounceForm(f => ({ ...f, title: t }))}
-            />
-            <Text style={styles.inputLabel}>內容</Text>
-            <TextInput
-              style={[styles.input, { height: 120, textAlignVertical: 'top' }]}
-              placeholder="請輸入詳細公告內容..."
-              multiline
-              value={announceForm.content}
-              onChangeText={t => setAnnounceForm(f => ({ ...f, content: t }))}
-            />
-            <TouchableOpacity style={styles.submitBtn} onPress={handleAddAnnouncement}>
-              <Text style={styles.submitBtnText}>確認發布</Text>
-            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );
@@ -246,43 +243,49 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F3F4F6' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
-  loadingText: { marginTop: 12, color: '#666', fontSize: 14 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  headerSafeArea: { backgroundColor: '#002147' },
+  customHeader: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15 },
+  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  iconBtn: { padding: 5 },
   content: { padding: 20 },
-  welcomeText: { fontSize: 16, color: '#666', marginBottom: 15 },
-  userName: { fontWeight: 'bold', color: '#002147', fontSize: 20 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#002147', marginTop: 15, marginBottom: 12 },
-  addNoticeBtn: { backgroundColor: '#C69C6D', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 5, flexDirection: 'row', alignItems: 'center' },
-  addNoticeText: { color: '#002147', fontSize: 12, fontWeight: 'bold', marginLeft: 3 },
-  noticeCard: { backgroundColor: '#fff', borderRadius: 12, padding: 18, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
-  noticeTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  noticeLabel: { backgroundColor: '#002147', color: '#fff', fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  noticeDate: { color: '#999', fontSize: 12 },
-  noticeTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 5 },
-  noticeContent: { fontSize: 14, color: '#666', lineHeight: 20 },
-  emptyText: { color: '#9CA3AF', textAlign: 'center', marginVertical: 10, marginTop: 8 },
-  chartCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, elevation: 2 },
-  chartSection: { flexDirection: 'row', alignItems: 'center' },
-  chartPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  welcomeText: { fontSize: 18, marginBottom: 20 },
+  userName: { fontWeight: 'bold', fontSize: 20, color: '#002147' },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#002147' },
+  addBtn: { backgroundColor: '#C69C6D', padding: 5, borderRadius: 5 },
+  addBtnText: { color: '#fff', fontSize: 12 },
+  card: { backgroundColor: '#fff', borderRadius: 10, padding: 15, marginBottom: 20 },
+  noticeTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
+  noticeDate: { fontSize: 12, color: '#999', marginBottom: 5 },
+  chartSection: { alignItems: 'center' },
+  chartPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', marginBottom: 15 },
   pieSegment: { width: '100%', height: '100%', borderRadius: 50 },
   chartInner: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
   chartTotal: { fontSize: 20, fontWeight: 'bold', color: '#002147' },
   chartLabel: { fontSize: 9, color: '#999' },
-  chartLegend: { marginLeft: 25, flex: 1 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  chartLegend: { flexDirection: 'row', gap: 20 },
+  legendItem: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
   legendText: { fontSize: 14, color: '#444' },
-  alertCard: { backgroundColor: '#FF4D4F', borderRadius: 12, padding: 18, flexDirection: 'row', alignItems: 'center', marginTop: 20, elevation: 4, shadowColor: '#FF4D4F', shadowOpacity: 0.3, shadowRadius: 5 },
-  alertInfo: { flex: 1, marginLeft: 15 },
-  alertTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  alertSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
-  noticeModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  noticeModalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25, minHeight: 450 },
-  noticeModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  noticeModalTitle: { fontSize: 18, fontWeight: 'bold', color: '#002147' },
-  inputLabel: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 8, marginTop: 10 },
-  input: { backgroundColor: '#F3F4F6', borderRadius: 8, padding: 15, fontSize: 15 },
-  submitBtn: { backgroundColor: '#C69C6D', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 25 },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+  circle: { width: 12, height: 12, borderRadius: 6 },
+  issueBox: { marginTop: 15, backgroundColor: '#FFF1F0', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FFA39E', width: '100%', alignItems: 'center' },
+  issueText: { color: '#CF1322', fontWeight: 'bold' },
+  issueSub: { color: '#CF1322', fontSize: 12, marginTop: 2, textDecorationLine: 'underline' },
+  // Menu Styles
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', flexDirection: 'row' },
+  menuContent: { width: '75%', backgroundColor: '#002147', height: '100%', padding: 20, paddingTop: 50, justifyContent: 'space-between' },
+  menuHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, alignItems: 'center' },
+  menuTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  menuItemText: { color: '#fff', fontSize: 17 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', marginBottom: 20 },
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 10 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+  input: { backgroundColor: '#f5f5f5', padding: 10, borderRadius: 5, marginBottom: 10 },
+  modalBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  cancelBtn: { padding: 10 },
+  confirmBtn: { backgroundColor: '#002147', padding: 10, borderRadius: 5 }
 });

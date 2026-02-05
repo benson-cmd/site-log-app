@@ -1,794 +1,457 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, StatusBar, Modal, TextInput, Alert, KeyboardAvoidingView, Dimensions } from 'react-native';
-import React, { useState, useEffect, useMemo } from 'react';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, StatusBar, Platform, SafeAreaView, Modal, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import * as DocumentPicker from 'expo-document-picker';
-import Papa from 'papaparse';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { LineChart } from "react-native-chart-kit";
-import { useProjects, Project, Extension, ChangeDesign, SubsequentExpansion, SchedulePoint } from '../../context/ProjectContext';
-import { usePersonnel } from '../../context/PersonnelContext';
+import { Dimensions } from "react-native";
+import { useProjects } from '../../context/ProjectContext';
 import { useLogs } from '../../context/LogContext';
-import { useUser } from '../../context/UserContext';
+import * as Linking from 'expo-linking';
+import * as ImagePicker from 'expo-image-picker';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../src/lib/firebase';
 
-const THEME = {
-  primary: '#C69C6D',
-  background: '#F5F7FA',
-  card: '#ffffff',
-  headerBg: '#002147',
-  text: '#333333',
-  danger: '#FF6B6B',
-  success: '#4CAF50',
-  warning: '#FF9800'
-};
+const Tabs = ({ activeTab, setActiveTab }: any) => (
+  <View style={styles.tabContainer}>
+    <TouchableOpacity style={[styles.tab, activeTab === 'progress' && styles.activeTab]} onPress={() => setActiveTab('progress')}>
+      <Text style={[styles.tabText, activeTab === 'progress' && styles.activeTabText]}>施工進度</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={[styles.tab, activeTab === 'info' && styles.activeTab]} onPress={() => setActiveTab('info')}>
+      <Text style={[styles.tabText, activeTab === 'info' && styles.activeTabText]}>專案資訊</Text>
+    </TouchableOpacity>
+  </View>
+);
 
-const EXECUTION_STATUS_MAP: Record<string, string> = {
-  not_started: '尚未開工',
-  started_prep: '開工尚未進場',
-  construction: '施工中',
-  completed: '完工',
-  inspection: '驗收中',
-  settlement: '結案'
-};
-const EXECUTION_STATUS_OPTIONS = Object.keys(EXECUTION_STATUS_MAP);
-const COUNT_OPTIONS = ['1', '2', '3', '4', '5'];
-const EXPANSION_COUNT_OPTIONS = ['1', '2'];
-
-const formatCurrency = (val: number | string | undefined) => {
-  if (!val) return '0';
-  const num = typeof val === 'string' ? parseFloat(val) : val;
-  if (isNaN(num)) return '0';
-  return num.toLocaleString();
-};
-
-const parseCurrency = (val: string) => {
-  return parseFloat(val.replace(/,/g, '')) || 0;
-};
+const InfoItem = ({ label, value, subText, color = 'black', valueStyle, children }: any) => (
+  <View style={styles.infoItem}>
+    <Text style={styles.infoLabel}>{label}</Text>
+    <Text style={[styles.infoValue, { color }, valueStyle]}>{value}</Text>
+    {subText && <Text style={styles.infoSub}>{subText}</Text>}
+    {children}
+  </View>
+);
 
 export default function ProjectDetailScreen() {
-  const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { projects, updateProject, deleteProject } = useProjects();
-  const { personnelList } = usePersonnel();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { projects, updateProject } = useProjects();
   const { logs } = useLogs();
-  const { user } = useUser();
 
-  const project = projects.find(p => p.id === id);
-  const projectLogs = useMemo(() => {
-    return logs.filter(l => l.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [logs, id]);
+  const [activeTab, setActiveTab] = useState('progress');
+  const [project, setProject] = useState<any>(null);
+  const [projectLogs, setProjectLogs] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<{ labels: string[], actual: (number | null)[] }>({ labels: [], actual: [] });
 
-  // --- Calculations (Moved Up) ---
-  const totalExtensionDays = useMemo(() => {
-    return project?.extensions?.reduce((sum, ext) => sum + (ext.days || 0), 0) || 0;
-  }, [project?.extensions]);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
+  const [isSaving, setIsSaving] = useState(false);
 
-  const plannedCompletionDate = useMemo(() => {
-    if (!project?.startDate || !project?.contractDuration) return '-';
-    const start = new Date(project.startDate);
-    if (isNaN(start.getTime())) return '-';
-    const totalDays = (project.contractDuration || 0) + totalExtensionDays - 1;
-    const end = new Date(start);
-    end.setDate(start.getDate() + totalDays);
-    return end.toISOString().split('T')[0];
-  }, [project?.startDate, project?.contractDuration, totalExtensionDays]);
-
-  const currentTotalAmount = useMemo(() => {
-    if (!project) return 0;
-    let base = project.contractAmount || 0;
-    if (project.changeDesigns && project.changeDesigns.length > 0) {
-      base = project.changeDesigns[project.changeDesigns.length - 1].newTotalAmount;
-    }
-    const expansions = project.subsequentExpansions?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
-    return base + expansions;
-  }, [project?.contractAmount, project?.changeDesigns, project?.subsequentExpansions]);
-
-  const projectSchedule = useMemo(() => {
-    let data: SchedulePoint[] = [];
-    if (project?.scheduleData && project.scheduleData.length > 0) {
-      data = [...project.scheduleData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    }
-    // Inject Start Point if needed
-    const pStart = project?.startDate;
-    if (pStart && pStart !== '-') {
-      if (data.length === 0 || data[0].date !== pStart) {
-        data.unshift({ date: pStart, progress: 0 });
-      }
-    }
-    // Inject End Point if needed 
-    const pEndDateVal = plannedCompletionDate;
-    if (pEndDateVal && pEndDateVal !== '-') {
-      if (data.length > 0 && data[data.length - 1].date !== pEndDateVal) {
-        data.push({ date: pEndDateVal, progress: 100 });
-      }
-    }
-    return data;
-  }, [project?.scheduleData, project?.startDate, plannedCompletionDate]);
-
-  // --- Metrics Calculation for Project Status Dashboard ---
-  const projectMetrics = useMemo(() => {
-    // [核心修正] 強制使用本地時間 locks YYYY-MM-DD
-    const dateObj = new Date();
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const todayStr = `${year}-${month}-${day}`;
-
-    // Used for interpolation and remaining days (at 00:00:00)
-    const todayBase = new Date(year, dateObj.getMonth(), dateObj.getDate());
-
-    // 1. Remaining Duration
-    let remainingDays = 0;
-    if (plannedCompletionDate !== '-') {
-      const end = new Date(plannedCompletionDate);
-      remainingDays = Math.ceil((end.getTime() - todayBase.getTime()) / (1000 * 60 * 60 * 24));
-    }
-
-    // 2. Planned Progress (Today)
-    let plannedProgress = 0;
-    if (projectSchedule.length > 0) {
-      const todayTs = todayBase.getTime();
-      const schedule = [...projectSchedule].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      const nextIdx = schedule.findIndex(s => new Date(s.date).getTime() >= todayTs);
-      if (nextIdx === 0) {
-        plannedProgress = schedule[0].progress;
-      } else if (nextIdx === -1) {
-        plannedProgress = schedule[schedule.length - 1].progress;
-      } else {
-        const p1 = schedule[nextIdx - 1];
-        const p2 = schedule[nextIdx];
-        const t1 = new Date(p1.date).getTime();
-        const t2 = new Date(p2.date).getTime();
-        const ratio = (todayTs - t1) / (t2 - t1);
-        plannedProgress = p1.progress + (p2.progress - p1.progress) * ratio;
-      }
-    }
-    plannedProgress = Math.round(plannedProgress * 10) / 10;
-
-    // 3. Strict Daily Actual Progress Check
-    const todayLog = projectLogs.find(l => l.date === todayStr);
-    const actualProgress = todayLog ? parseFloat(String((todayLog as any).actualProgress || 0)) : 0;
-    const hasTodayLog = !!todayLog;
-
-    // Gap Analysis (Calculated ONLY if todayLog exists)
-    let diffElement = null;
-    if (hasTodayLog) {
-      const diff = actualProgress - plannedProgress;
-      const diffFix = diff.toFixed(1);
-      if (diff > 0) {
-        diffElement = <Text style={{ color: '#52c41a', fontSize: 11, marginTop: 4, fontWeight: 'bold' }}>▲ 超前 {diffFix}%</Text>;
-      } else if (diff < 0) {
-        diffElement = <Text style={{ color: '#ff4d4f', fontSize: 11, marginTop: 4, fontWeight: 'bold' }}>▼ 落後 {Math.abs(diff).toFixed(1)}%</Text>;
-      } else {
-        diffElement = <Text style={{ color: '#888', fontSize: 11, marginTop: 4 }}>- 持平 -</Text>;
-      }
-    }
-
-    return {
-      remainingDays,
-      plannedProgress,
-      actualProgress: Math.round(actualProgress * 10) / 10,
-      hasTodayLog,
-      actualDisplay: hasTodayLog ? `${Math.round(actualProgress * 10) / 10}%` : '尚未更新',
-      todayStr,
-      diffElement
-    };
-  }, [project, projectSchedule, projectLogs, plannedCompletionDate]);
-
-  // Edit Modal State
-  const [isEditModalVisible, setEditModalVisible] = useState(false);
-  const [editProject, setEditProject] = useState<Partial<Project>>({});
-
-  // Forms
-  const [extForm, setExtForm] = useState({ days: '', date: '', docNumber: '', reason: '' });
-  const [cdForm, setCdForm] = useState({ count: '1', date: '', docNumber: '', reason: '', newTotalAmount: '' });
-  const [seForm, setSeForm] = useState({ count: '1', date: '', docNumber: '', reason: '', amount: '' });
-
-  // UI States
-  const [showCdCountPicker, setShowCdCountPicker] = useState(false);
-  const [showSeCountPicker, setShowSeCountPicker] = useState(false);
-  const [showManagerPicker, setShowManagerPicker] = useState(false);
-  const [showStatusPicker, setShowStatusPicker] = useState(false);
-
-  const managers = useMemo(() => personnelList.map(p => p.name), [personnelList]);
-
-  // Date Picker
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [dateFieldTarget, setDateFieldTarget] = useState<string>('');
-  const [tempDate, setTempDate] = useState(new Date());
-
-
-  // S-Curve States
-  const [plannedData, setPlannedData] = useState<number[]>([0]);
-  const [actualData, setActualData] = useState<(number | null)[]>([0]);
-  const [chartLabels, setChartLabels] = useState<string[]>(['Start']);
-  const [activeTab, setActiveTab] = useState<'progress' | 'info'>('progress');
-
-  // Documents Section States
-  const [isDocModalVisible, setDocModalVisible] = useState(false);
-  const [docForm, setDocForm] = useState({ title: '', file: null as any, uploading: false });
-
-  // Handler: Edit Button (Fix Empty Form Issue)
-  const handleEditPress = () => {
-    if (project) {
-      setEditProject({
-        name: project.name || '',
-        address: project.address || '',
-        manager: project.manager || '',
-        executionStatus: project.executionStatus || 'not_started',
-        startDate: project.startDate || '',
-        contractAmount: project.contractAmount || 0,
-        contractDuration: project.contractDuration || 0,
-        awardDate: project.awardDate || '',
-        actualCompletionDate: project.actualCompletionDate || '',
-        inspectionDate: project.inspectionDate || '',
-        inspectionPassedDate: project.inspectionPassedDate || '',
-        reinspectionDate: project.reinspectionDate || '',
-        description: project.description || '',
-        extensions: project.extensions || [],
-        changeDesigns: project.changeDesigns || [],
-        subsequentExpansions: project.subsequentExpansions || [],
-        scheduleData: project.scheduleData || []
-      });
-    }
-    setEditModalVisible(true);
-  };
-
+  // 1. 載入專案資料
   useEffect(() => {
-    if (project) {
-      const toTs = (d: any) => {
-        if (!d) return 0;
-        const str = typeof d === 'string' ? d.replace(/\//g, '-') : d.toISOString();
-        return new Date(str).getTime();
-      };
+    if (id && projects.length > 0) {
+      const p = projects.find(item => item.id === id);
+      if (p) {
+        setProject(p);
+        const safeP = p as any;
+        setEditForm({
+          ...safeP,
+          originalAmount: safeP.originalAmount || safeP.contractPrice || safeP.totalPrice || '',
+          changeOrders: safeP.changeOrders || [],
+          extensions: safeP.extensions || [],
+          documents: safeP.documents || []
+        });
+      }
+    }
+  }, [id, projects]);
 
-      const startTs = toTs(project.startDate);
-      const endTs = toTs(plannedCompletionDate);
+  // 2. 載入相關日誌
+  useEffect(() => {
+    if (logs.length > 0 && id) {
+      const filtered = logs.filter(l => l.projectId === id).sort((a, b) => b.date.localeCompare(a.date));
+      setProjectLogs(filtered);
+    }
+  }, [id, logs]);
+
+  // --- 核心邏輯：日期計算 (提升至 Top Level 以便 S-Curve 使用) ---
+  const calculateDates = useMemo(() => {
+    if (!project) return { calculatedEndDateStr: '-', totalExtensionDays: 0, startTs: 0, endTs: 0 };
+
+    const startStr = project.startDate ? String(project.startDate).replace(/\//g, '-') : '';
+    const duration = Number(project.duration || (project as any).contractDuration || 0);
+    const totalExtensionDays = (project.extensions || []).reduce((acc: number, curr: any) => acc + (Number(curr.days) || 0), 0);
+
+    let calculatedEndDateStr = project.endDate;
+    let endTs = 0;
+    let startTs = 0;
+
+    // 若有開工日與工期，優先使用動態計算
+    if (startStr && duration > 0) {
+      const startDate = new Date(startStr);
+      startTs = startDate.getTime();
+
+      // 計算公式：開工日 + 工期 + 展延 - 1
+      const totalDays = duration + totalExtensionDays;
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + totalDays - 1);
+
+      endTs = endDate.getTime();
+      const y = endDate.getFullYear();
+      const m = String(endDate.getMonth() + 1).padStart(2, '0');
+      const d = String(endDate.getDate()).padStart(2, '0');
+      calculatedEndDateStr = `${y}-${m}-${d}`;
+    } else {
+      // Fallback
+      const eStr = project.endDate ? String(project.endDate).replace(/\//g, '-') : '';
+      if (eStr) endTs = new Date(eStr).getTime();
+      if (startStr) startTs = new Date(startStr).getTime();
+    }
+
+    return { calculatedEndDateStr, totalExtensionDays, startTs, endTs };
+  }, [project]);
+
+  // 3. S-Curve 計算
+  useEffect(() => {
+    if (project && calculateDates.startTs > 0 && calculateDates.endTs > 0) {
+      const { startTs, endTs } = calculateDates;
       const nowTs = new Date().getTime();
 
       const points = [];
-      const totalDuration = endTs - startTs;
-      const steps = 6;
-      for (let i = 0; i <= steps; i++) {
-        if (i === steps) points.push(endTs);
-        else points.push(startTs + (totalDuration * (i / steps)));
+      // 若日期有效，建立 6 等分座標
+      if (endTs > startTs) {
+        const totalDuration = endTs - startTs;
+        const steps = 6;
+        for (let i = 0; i <= steps; i++) {
+          if (i === steps) points.push(endTs);
+          else points.push(startTs + (totalDuration * (i / steps)));
+        }
+      } else {
+        points.push(nowTs);
       }
 
       const labelsStr = points.map(ts => {
         const d = new Date(ts);
         return `${d.getMonth() + 1}/${d.getDate()}`;
       });
-      setChartLabels(prev => {
-        const next = labelsStr;
-        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-      });
 
-      if (projectLogs && projectLogs.length > 0) {
-        const cleanLogs = projectLogs.map(l => ({
-          ts: toTs(l.date),
-          val: parseFloat((l as any).actualProgress || 0)
-        })).sort((a, b) => a.ts - b.ts);
+      if (projectLogs.length > 0) {
+        const cleanLogs = projectLogs.map(l => {
+          const dStr = l.date ? String(l.date).replace(/\//g, '-') : '';
+          // 處理百分比字串 "20%" -> 20
+          const valStr = String(l.actualProgress || '0').replace('%', '');
+          return {
+            ts: dStr ? new Date(dStr).getTime() : 0,
+            val: parseFloat(valStr) || 0
+          };
+        }).sort((a, b) => a.ts - b.ts);
 
         const mappedData = points.map(pointTs => {
-          if (pointTs > nowTs) return null;
-          const validLogs = cleanLogs.filter(l => l.ts <= pointTs);
+          // 未來不畫線 (容許一天誤差)
+          if (pointTs > nowTs + 86400000) return null;
+
+          const validLogs = cleanLogs.filter(l => l.ts > 0 && l.ts <= pointTs);
           if (validLogs.length > 0) return validLogs[validLogs.length - 1].val;
           return 0;
         });
+
         const hasData = mappedData.some(d => d !== null);
-        const finalActual = hasData ? mappedData : [0];
-        setActualData(prev => {
-          return JSON.stringify(prev) === JSON.stringify(finalActual) ? prev : finalActual;
-        });
+        setChartData({ labels: labelsStr, actual: hasData ? mappedData : [0] });
       } else {
-        setActualData(prev => {
-          return JSON.stringify(prev) === JSON.stringify([0]) ? prev : [0];
-        });
-      }
-
-      if (project.scheduleData && project.scheduleData.length > 0) {
-        const sortedSchedule = [...project.scheduleData].sort((a, b) => toTs(a.date) - toTs(b.date));
-        const newPlannedData = points.map(pointTs => {
-          const valid = sortedSchedule.filter(s => toTs(s.date) <= pointTs);
-          if (valid.length > 0) return valid[valid.length - 1].progress;
-          return 0;
-        });
-        setPlannedData(prev => {
-          return JSON.stringify(prev) === JSON.stringify(newPlannedData) ? prev : newPlannedData;
-        });
-      } else {
-        const linear = points.map((_, i) => Math.round((i / steps) * 100));
-        setPlannedData(prev => {
-          return JSON.stringify(prev) === JSON.stringify(linear) ? prev : linear;
-        });
+        setChartData({ labels: labelsStr, actual: [0] });
       }
     }
-  }, [project, projectLogs, plannedCompletionDate]);
+  }, [project, projectLogs, calculateDates]);
 
-  const handleImportPlannedCSV = async () => {
+  if (!project) return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color="#002147" />
+      <Text style={{ marginTop: 10, color: '#666' }}>專案資料載入中...</Text>
+    </View>
+  );
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayLog = projectLogs.find(l => {
+    const lDate = l.date ? String(l.date).replace(/\//g, '-') : '';
+    return lDate === todayStr;
+  });
+  const actualDisplay = todayLog ? `${todayLog.actualProgress}%` : '尚未更新';
+  const actualColor = todayLog ? '#333' : '#EF4444';
+
+  let remainingDays = 0;
+  if (calculateDates.endTs > 0) {
+    const now = new Date().getTime();
+    remainingDays = Math.ceil((calculateDates.endTs - now) / (1000 * 60 * 60 * 24));
+  }
+  const remainingText = `${remainingDays} 天`;
+  const remainingColor = remainingDays < 0 ? '#EF4444' : '#111827';
+
+  const getStatusText = (status: string) => {
+    const map: any = {
+      'planning': '尚未開工',
+      'in-progress': '施工中',
+      'construction': '施工中',
+      'completed': '已完工',
+      'suspended': '停工中'
+    };
+    return map[status] || status || '未知狀態';
+  };
+
+  const handleOpenDoc = (url: string) => {
+    if (Platform.OS === 'web') window.open(url, '_blank');
+    else Linking.openURL(url);
+  };
+
+  const handleSaveProject = async () => {
+    setIsSaving(true);
     try {
-      const res = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/plain'], copyToCacheDirectory: true });
-      if (!res.canceled && res.assets && res.assets[0]) {
-        const file = res.assets[0];
-        const response = await fetch(file.uri);
-        const content = await response.text();
-        Papa.parse(content, {
-          header: true, skipEmptyLines: true,
-          complete: (results) => {
-            const parsed: SchedulePoint[] = [];
-            results.data.forEach((row: any) => {
-              const keys = Object.keys(row);
-              const dKey = keys.find(k => k.toLowerCase().includes('date') || k.includes('日期'));
-              const pKey = keys.find(k => k.toLowerCase().includes('progress') || k.includes('進度'));
-              if (dKey && pKey && row[dKey]) {
-                parsed.push({ date: row[dKey], progress: parseFloat(row[pKey]) || 0 });
-              }
-            });
-            if (parsed.length > 0) {
-              parsed.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-              if (id) {
-                updateProject(id as string, { scheduleData: parsed });
-                Alert.alert('成功', '預定進度已匯入並更新');
-              }
-            } else {
-              Alert.alert('錯誤', '無法解析 CSV，請確保包含日期與進度欄位');
-            }
-          }
-        });
-      }
-    } catch (e) { Alert.alert('錯誤', '匯入失敗'); }
-  };
-
-  const handleDelete = async () => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('確定要刪除此專案嗎？此動作無法復原。')) {
-        if (id) {
-          try {
-            await deleteProject(id as string);
-            router.replace('/projects');
-          } catch (e) { window.alert('刪除失敗'); }
-        }
-      }
-    } else {
-      Alert.alert('刪除專案', '確定要刪除此專案嗎？此動作無法復原。', [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '確定刪除', style: 'destructive', onPress: async () => {
-            if (id) {
-              try {
-                await deleteProject(id as string);
-                router.replace('/projects');
-              } catch (e) { Alert.alert('錯誤', '刪除失敗'); }
-            }
-          }
-        }
-      ]);
+      const docRef = doc(db, 'projects', project.id);
+      await updateDoc(docRef, editForm);
+      setProject(editForm);
+      setIsEditModalVisible(false);
+      Alert.alert("成功", "專案資料已更新");
+    } catch (e) {
+      Alert.alert("錯誤", "更新失敗，請檢查網路");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleSave = async () => {
-    if (!id) return;
-    let newTotal = parseFloat(editProject.contractAmount?.toString() || '0');
-    if (editProject.changeDesigns && editProject.changeDesigns.length > 0) {
-      newTotal = editProject.changeDesigns[editProject.changeDesigns.length - 1].newTotalAmount;
-    }
-    if (editProject.subsequentExpansions) {
-      newTotal += editProject.subsequentExpansions.reduce((sum, s) => sum + (s.amount || 0), 0);
-    }
-    await updateProject(id as string, { ...editProject, currentContractAmount: newTotal });
-    setEditModalVisible(false);
-    Platform.OS === 'web' ? window.alert('已儲存') : Alert.alert('已儲存');
+  const addItemToForm = (field: string, item: any) => {
+    setEditForm((prev: any) => ({ ...prev, [field]: [...(prev[field] || []), item] }));
+  };
+  const updateItemInForm = (field: string, index: number, key: string, value: string) => {
+    const newList = [...(editForm[field] || [])];
+    newList[index] = { ...newList[index], [key]: value };
+    setEditForm({ ...editForm, [field]: newList });
+  };
+  const removeItemFromForm = (field: string, index: number) => {
+    const newList = [...(editForm[field] || [])];
+    newList.splice(index, 1);
+    setEditForm({ ...editForm, [field]: newList });
   };
 
-  const handleDateChange = (field: string, value: string) => {
-    if (field === 'extension') setExtForm(prev => ({ ...prev, date: value }));
-    else if (field === 'changeDesign') setCdForm(prev => ({ ...prev, date: value }));
-    else if (field === 'subsequentExpansion') setSeForm(prev => ({ ...prev, date: value }));
-    else if (field === 'award') setEditProject(prev => ({ ...prev, awardDate: value }));
-    else if (field === 'start') setEditProject(prev => ({ ...prev, startDate: value }));
-    else if (field === 'actual') setEditProject(prev => ({ ...prev, actualCompletionDate: value }));
-    else if (field === 'inspection') setEditProject(prev => ({ ...prev, inspectionDate: value }));
-    else if (field === 'reinspection') setEditProject(prev => ({ ...prev, reinspectionDate: value }));
-    else if (field === 'passed') setEditProject(prev => ({ ...prev, inspectionPassedDate: value }));
-  };
-
-  const openNativeDatePicker = (field: string) => {
-    setDateFieldTarget(field);
-    setTempDate(new Date());
-    setShowDatePicker(true);
-  };
-
-  const onNativeDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (selectedDate) {
-      const str = selectedDate.toISOString().split('T')[0];
-      handleDateChange(dateFieldTarget, str);
-    }
-  };
-
-  const renderDateInput = (field: any, value: string, placeholder: string, customStyle?: any) => {
-    if (Platform.OS === 'web') {
-      return React.createElement('input', {
-        type: 'date', value: value, onChange: (e: any) => handleDateChange(field, e.target.value),
-        style: { padding: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, width: '100%', height: 40, ...customStyle }
+  const handleAddDocument = async () => {
+    try {
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: false, quality: 1,
       });
-    }
-    return (
-      <TouchableOpacity style={[styles.dateBtn, customStyle]} onPress={() => openNativeDatePicker(field)}>
-        <Text style={[styles.dateBtnText, !value && { color: '#999' }]}>{value || placeholder}</Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const handleAddExtension = () => {
-    if (!extForm.days) return;
-    const newExt: Extension = { id: Math.random().toString(36).substr(2, 9), days: parseInt(extForm.days) || 0, date: extForm.date, docNumber: extForm.docNumber, reason: extForm.reason };
-    setEditProject(prev => ({ ...prev, extensions: [...(prev.extensions || []), newExt] }));
-    setExtForm({ days: '', date: '', docNumber: '', reason: '' });
-  };
-  const handleAddChangeDesign = () => {
-    if (!cdForm.newTotalAmount) return;
-    const newCd: ChangeDesign = { id: Math.random().toString(36).substr(2, 9), count: parseInt(cdForm.count) || 1, date: cdForm.date, docNumber: cdForm.docNumber, reason: cdForm.reason, newTotalAmount: parseCurrency(cdForm.newTotalAmount), type: 'set' };
-    setEditProject(prev => ({ ...prev, changeDesigns: [...(prev.changeDesigns || []), newCd] }));
-    setCdForm({ count: '1', date: '', docNumber: '', reason: '', newTotalAmount: '' });
-    setShowCdCountPicker(false);
-  };
-  const handleAddSubsequent = () => {
-    if (!seForm.amount) return;
-    const newSe: SubsequentExpansion = { id: Math.random().toString(36).substr(2, 9), count: parseInt(seForm.count) || 1, date: seForm.date, docNumber: seForm.docNumber, reason: seForm.reason, amount: parseCurrency(seForm.amount) };
-    setEditProject(prev => ({ ...prev, subsequentExpansions: [...(prev.subsequentExpansions || []), newSe] }));
-    setSeForm({ count: '1', date: '', docNumber: '', reason: '', amount: '' });
-    setShowSeCountPicker(false);
-  };
-
-  const handleImportSchedule = async () => {
-    try {
-      const res = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'application/vnd.ms-excel', 'text/plain'], copyToCacheDirectory: true });
-      if (!res.canceled && res.assets && res.assets[0]) {
-        const file = res.assets[0];
-        const response = await fetch(file.uri);
-        const content = await response.text();
-        Papa.parse(content, {
-          header: true, skipEmptyLines: true,
-          complete: (results) => {
-            const data: SchedulePoint[] = [];
-            results.data.forEach((row: any) => {
-              const k = Object.keys(row);
-              const d = k.find(x => x.includes('date') || x.includes('日期'));
-              const p = k.find(x => x.includes('progress') || x.includes('進度'));
-              if (d && p) data.push({ date: row[d], progress: parseFloat(row[p]) || 0 });
-            });
-            if (data.length) setEditProject(prev => ({ ...prev, scheduleData: data }));
-          }
-        });
+      if (!result.canceled) {
+        const newDoc = { title: `文件-${new Date().toISOString().slice(5, 10)}`, url: result.assets[0].uri, type: 'image' };
+        addItemToForm('documents', newDoc);
+        Alert.alert('已選取', '請記得按下儲存以生效');
       }
-    } catch (e) { Alert.alert('Error', 'Import failed'); }
+    } catch (e) { }
   };
 
-  const handlePickDocument = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ['image/*', 'application/pdf'], copyToCacheDirectory: true });
-      if (!result.canceled && result.assets && result.assets[0]) setDocForm(prev => ({ ...prev, file: result.assets[0] }));
-    } catch (err) { console.error('Pick document error:', err); }
-  };
-
-  const { uploadPhoto } = useLogs();
-
-  const handleSaveDocument = async () => {
-    if (!docForm.title || !docForm.file || !id || !project) return;
-    setDocForm(prev => ({ ...prev, uploading: true }));
-    try {
-      const url = await uploadPhoto(docForm.file.uri, docForm.file.name);
-      const fileType = docForm.file.mimeType?.includes('pdf') || docForm.file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image';
-      const newDoc = { id: Math.random().toString(36).substr(2, 9), title: docForm.title, url, type: fileType, createdAt: new Date().toISOString() };
-      await updateProject(id as string, { documents: [...(project.documents || []), newDoc] });
-      setDocModalVisible(false);
-      setDocForm({ title: '', file: null, uploading: false });
-      Alert.alert('成功', '文件已上傳');
-    } catch (err: any) { Alert.alert('失敗', err.message); }
-    finally { setDocForm(prev => ({ ...prev, uploading: false })); }
-  };
-
-  const openDocument = (doc: any) => {
-    if (Platform.OS === 'web') {
-      window.open(doc.url, '_blank');
-    } else {
-      import('expo-linking').then(Linking => {
-        Linking.openURL(doc.url);
-      });
-    }
-  };
-
-  if (!project) return null;
+  const displayOriginalAmount = project.originalAmount || (project as any).contractPrice || '$0';
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: '專案詳情', headerShown: false }} />
-      <SafeAreaView style={styles.headerSafeArea}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={24} color="#fff" /></TouchableOpacity>
-          <Text style={styles.headerTitle}>{project.name}</Text>
-          <View style={{ flexDirection: 'row' }}>
-            {user?.role === 'admin' && (
-              <>
-                <TouchableOpacity onPress={handleDelete} style={{ marginRight: 15 }}>
-                  <Ionicons name="trash-outline" size={24} color="#FF6B6B" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleEditPress}>
-                  <Ionicons name="create-outline" size={24} color="#fff" />
-                </TouchableOpacity>
-              </>
-            )}
+      <Stack.Screen options={{
+        headerShown: true,
+        title: project.name,
+        headerStyle: { backgroundColor: '#002147' },
+        headerTintColor: '#fff',
+        headerRight: () => (
+          <TouchableOpacity onPress={() => setIsEditModalVisible(true)} style={{ marginRight: 10 }}>
+            <Ionicons name="create-outline" size={24} color="#fff" />
+          </TouchableOpacity>
+        )
+      }} />
+      <StatusBar barStyle="light-content" />
+
+      <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {activeTab === 'progress' ? (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.sectionTitle}>專案狀態</Text>
+          <View style={styles.dashboardRow}>
+            <InfoItem label="剩餘工期" value={remainingText} color={remainingColor} />
+            <InfoItem label="預定進度" value="21.5%" subText={`(${todayStr})`} />
+            <InfoItem label="實際進度" value={actualDisplay} subText={`(${todayStr})`} color={actualColor} />
+            <InfoItem label="執行狀態" value={getStatusText(project.status)} />
           </View>
-        </View>
-        <View style={styles.tabContainer}>
-          <TouchableOpacity style={[styles.tabBtn, activeTab === 'progress' && styles.tabBtnActive]} onPress={() => setActiveTab('progress')}><Text style={[styles.tabText, activeTab === 'progress' && styles.tabTextActive]}>施工進度</Text></TouchableOpacity>
-          <TouchableOpacity style={[styles.tabBtn, activeTab === 'info' && styles.tabBtnActive]} onPress={() => setActiveTab('info')}><Text style={[styles.tabText, activeTab === 'info' && styles.tabTextActive]}>專案資訊</Text></TouchableOpacity>
-        </View>
-      </SafeAreaView>
 
-      <ScrollView style={styles.content}>
-        {activeTab === 'progress' ? (
-          <>
-            <View style={{ marginTop: 15, paddingHorizontal: 15 }}>
-              <Text style={styles.cardTitle}>專案狀態</Text>
-            </View>
-            <View style={styles.metricsRow}>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>剩餘工期</Text>
-                <Text style={[styles.metricValue, projectMetrics.remainingDays < 0 && { color: THEME.danger }]}>
-                  {projectMetrics.remainingDays} 天
-                </Text>
-              </View>
+          <Text style={styles.sectionTitle}>專案進度 S-Curve</Text>
+          <View style={styles.chartCard}>
+            <LineChart
+              data={{
+                labels: chartData.labels,
+                datasets: [
+                  { data: chartData.actual as any, color: (opacity = 1) => `rgba(255, 87, 34, ${opacity})`, strokeWidth: 2 },
+                  { data: [0, 10, 25, 45, 65, 85, 100], color: (opacity = 1) => `rgba(65, 105, 225, ${opacity})`, strokeWidth: 2, withDots: false }
+                ],
+                legend: ['實際', '預定']
+              }}
+              width={Dimensions.get("window").width - 40}
+              height={220}
+              chartConfig={{
+                backgroundColor: "#fff",
+                backgroundGradientFrom: "#fff",
+                backgroundGradientTo: "#fff",
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                propsForDots: { r: "4" }
+              }}
+              bezier
+              style={{ marginVertical: 8, borderRadius: 16 }}
+              withDots={true}
+              getDotColor={(dataPoint, index) => index === 0 ? 'rgba(255, 87, 34, 1)' : 'rgba(255, 87, 34, 1)'}
+            />
+          </View>
 
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>預定進度</Text>
-                <Text style={styles.metricValue}>{projectMetrics.plannedProgress}%</Text>
-                <Text style={{ fontSize: 9, color: '#999', marginTop: 2 }}>({projectMetrics.todayStr})</Text>
-              </View>
+          <Text style={styles.sectionTitle}>重要日期</Text>
+          <View style={styles.infoCard}>
+            <View style={styles.dateRow}><Text style={styles.label}>開工日期：</Text><Text>{project.startDate}</Text></View>
+            <View style={styles.dateRow}><Text style={styles.label}>契約工期：</Text><Text>{project.duration || (project as any).contractDuration || '-'} 天</Text></View>
+            <View style={styles.dateRow}><Text style={styles.label}>累計展延：</Text><Text style={{ color: calculateDates.totalExtensionDays > 0 ? 'red' : 'black' }}>{calculateDates.totalExtensionDays} 天</Text></View>
+            <View style={styles.dateRow}><Text style={styles.label}>預定竣工：</Text><Text style={{ fontWeight: 'bold' }}>{calculateDates.calculatedEndDateStr}</Text></View>
+            <View style={styles.dateRow}><Text style={styles.label}>實際竣工：</Text><Text>{project.actualEndDate || '-'}</Text></View>
+            <View style={styles.dateRow}><Text style={styles.label}>驗收日期：</Text><Text>{project.acceptanceDate || '-'}</Text></View>
+          </View>
 
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>實際進度</Text>
-                <Text style={[
-                  styles.metricValue,
-                  !projectMetrics.hasTodayLog && { color: '#ff4d4f', fontSize: 13 }
-                ]}>
-                  {projectMetrics.actualDisplay}
-                </Text>
-                {projectMetrics.hasTodayLog && (
-                  <Text style={{ fontSize: 9, color: '#999', marginTop: 2 }}>({projectMetrics.todayStr})</Text>
-                )}
-                {projectMetrics.diffElement}
-              </View>
-
-              <View style={[styles.metricItem, { borderRightWidth: 0, flex: 1.2 }]}>
-                <Text style={styles.metricLabel}>執行狀態</Text>
-                <View style={styles.statusBadgeSmall}>
-                  <Text style={styles.statusTextSmall}>
-                    {EXECUTION_STATUS_MAP[project.executionStatus || 'not_started']}
-                  </Text>
+          <Text style={styles.sectionTitle}>施工日誌 ({projectLogs.length})</Text>
+          {projectLogs.map(log => {
+            const issueStr = log.issues ? String(log.issues).trim() : '';
+            const hasIssue = log.status === 'issue' || issueStr.length > 0;
+            return (
+              <View key={log.id} style={styles.logItem}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={styles.logDate}>{log.date}</Text>
+                  {hasIssue && <View style={styles.tagIssue}><Text style={{ color: '#fff', fontSize: 10 }}>⚠️ 異常</Text></View>}
                 </View>
+                <Text numberOfLines={1} style={{ color: '#666', marginTop: 4 }}>{log.content}</Text>
               </View>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>專案進度 S-Curve</Text>
-              {chartLabels.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <LineChart
-                    data={{
-                      labels: chartLabels.length > 6 ? chartLabels.filter((_, i) => i % Math.ceil(chartLabels.length / 6) === 0) : chartLabels,
-                      datasets: [
-                        { data: plannedData, color: () => `rgba(0, 0, 255, 1)`, strokeWidth: 2, withDots: false },
-                        { data: actualData as number[], color: () => `rgba(255, 0, 0, 1)`, strokeWidth: 2, withDots: true }
-                      ],
-                      legend: ["預定", "實際"]
-                    }}
-                    width={Dimensions.get("window").width - 60} height={220} yAxisSuffix="%"
-                    chartConfig={{ backgroundColor: "#ffffff", backgroundGradientFrom: "#ffffff", backgroundGradientTo: "#ffffff", decimalPlaces: 0, color: () => `rgba(0, 0, 0, 1)`, labelColor: () => `rgba(51, 51, 51, 1)`, style: { borderRadius: 16 }, propsForDots: { r: "4", strokeWidth: "2", stroke: "#ffa726" } }}
-                    bezier style={{ marginVertical: 8, borderRadius: 16 }}
-                  />
-                </ScrollView>
-              )}
-              <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <TouchableOpacity onPress={handleImportPlannedCSV} style={styles.smallBtn}><Ionicons name="cloud-upload-outline" size={16} color="#fff" /><Text style={{ color: '#fff', marginLeft: 5, fontSize: 12 }}>匯入預定進度</Text></TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>重要日期</Text>
-              <View style={styles.rowBetween}><Text style={styles.dateLabel}>開工日:</Text><Text style={styles.dateVal}>{project.startDate || '-'}</Text></View>
-              <View style={[styles.rowBetween, { backgroundColor: '#E3F2FD', padding: 5, borderRadius: 4, marginVertical: 5 }]}><Text style={{ color: '#002147', fontWeight: 'bold' }}>預定竣工日:</Text><Text style={{ color: '#002147', fontWeight: 'bold' }}>{plannedCompletionDate}</Text></View>
-              <View style={styles.rowBetween}><Text style={styles.dateLabel}>實際竣工日:</Text><Text style={styles.dateVal}>{project.actualCompletionDate || '-'}</Text></View>
-              <View style={styles.divider} />
-              <View style={styles.rowBetween}><Text style={styles.dateLabel}>驗收日期:</Text><Text style={styles.dateVal}>{project.inspectionDate || '-'}</Text></View>
-              <View style={styles.rowBetween}><Text style={styles.dateLabel}>驗收合格:</Text><Text style={styles.dateVal}>{project.inspectionPassedDate || '-'}</Text></View>
-            </View>
-
-            <Text style={[styles.cardTitle, { margin: 15 }]}>施工日誌 ({projectLogs.length})</Text>
-            {projectLogs.map(log => {
-              const pendingCount = (log.issues || []).filter((i: any) => i.status === 'pending').length;
-              return (
-                <TouchableOpacity key={log.id} style={styles.logCard} onPress={() => router.push('/logs')}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ fontWeight: 'bold' }}>{log.date}</Text>
-                      {pendingCount > 0 && <View style={styles.issueBadge}><Text style={styles.issueText}>⚠️ 待處理: {pendingCount}</Text></View>}
-                    </View>
-                  </View>
-                  <Text numberOfLines={2} style={{ color: '#444', marginTop: 5 }}>{log.content}</Text>
-                </TouchableOpacity>
-              );
-            })}
-            <View style={{ height: 50 }} />
-          </>
-        ) : (
-          <>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>專案詳情</Text>
-              <View style={styles.infoRow}><Ionicons name="location-outline" size={18} color="#666" /><Text style={styles.infoText}>{project.address || '-'}</Text></View>
-              <View style={styles.infoRow}><Ionicons name="person-outline" size={18} color="#666" /><Text style={styles.infoText}>主任: {project.manager || '-'}</Text></View>
-              {project.description && <Text style={styles.descriptionText}>{project.description}</Text>}
-              <View style={styles.divider} />
-              <View style={styles.infoRow}><Text style={styles.labelCol}>原始總價:</Text><Text style={styles.valCol}>${formatCurrency(project.contractAmount)}</Text></View>
-              <View style={styles.infoRow}><Text style={styles.labelCol}>變更後總價:</Text><Text style={styles.valCol}>${formatCurrency(currentTotalAmount)}</Text></View>
-              <View style={styles.infoRow}><Text style={styles.labelCol}>決標日期:</Text><Text style={styles.valCol}>{project.awardDate || '-'}</Text></View>
-            </View>
-            <View style={styles.card}>
-              <View style={styles.rowBetween}><Text style={styles.cardTitle}>📂 契約與施工圖說</Text>{user?.role === 'admin' && <TouchableOpacity style={styles.addSmallBtn} onPress={() => setDocModalVisible(true)}><Ionicons name="cloud-upload" size={16} color="#fff" /><Text style={{ color: '#fff', marginLeft: 4, fontWeight: 'bold' }}>上傳</Text></TouchableOpacity>}</View>
-              <View style={{ marginTop: 15 }}>{(project.documents || []).length === 0 ? <Text style={{ color: '#999', textAlign: 'center', padding: 20 }}>尚無上傳文件</Text> : project.documents?.map(doc => <TouchableOpacity key={doc.id} style={styles.docItem} onPress={() => openDocument(doc)}><View style={styles.docIcon}><Ionicons name={doc.type === 'pdf' ? 'document-text' : 'image'} size={24} color={doc.type === 'pdf' ? '#FF4D4F' : '#1890FF'} /></View><View style={{ flex: 1 }}><Text style={styles.docTitle} numberOfLines={1}>{doc.title}</Text><Text style={styles.docMeta}>{doc.createdAt?.split('T')[0]} · {doc.type.toUpperCase()}</Text></View><Ionicons name="chevron-forward" size={18} color="#ccc" /></TouchableOpacity>)}</View>
-            </View>
-            <View style={{ height: 50 }} />
-          </>
-        )}
-      </ScrollView>
-
-      <Modal visible={isDocModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.docModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={{ fontSize: 18, fontWeight: 'bold' }}>上傳文件與圖說</Text>
-              <TouchableOpacity onPress={() => setDocModalVisible(false)}>
-                <Ionicons name="close" size={26} />
-              </TouchableOpacity>
-            </View>
-            <View style={{ padding: 20 }}>
-              <Text style={styles.label}>文件名稱</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="例如：施工契約、結構圖..."
-                value={docForm.title}
-                onChangeText={t => setDocForm({ ...docForm, title: t })}
-              />
-              <TouchableOpacity style={styles.filePickerBtn} onPress={handlePickDocument}>
-                <Ionicons
-                  name={docForm.file ? "checkmark-circle" : "document-attach-outline"}
-                  size={22}
-                  color={docForm.file ? "#52c41a" : "#666"}
-                />
-                <Text style={{ marginLeft: 10, color: '#333' }}>
-                  {docForm.file ? docForm.file.name : "選取檔案 (圖片或 PDF)"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitBtnFull, (docForm.uploading || !docForm.file) && { backgroundColor: '#ccc' }]}
-                onPress={handleSaveDocument}
-                disabled={docForm.uploading || !docForm.file}
-              >
-                {docForm.uploading ? (
-                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>上傳中...</Text>
-                ) : (
-                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>確認上傳</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.sectionTitle}>基本資料</Text>
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}><Text style={styles.label}>專案名稱：</Text><Text style={{ flex: 1 }}>{project.name}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.label}>專案地點：</Text><Text>{project.address}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.label}>工地主任：</Text><Text>{project.manager}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.label}>決標日期：</Text><Text>{project.awardDate || '-'}</Text></View>
           </View>
-        </View>
-      </Modal>
 
+          <Text style={styles.sectionTitle}>契約金額</Text>
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}><Text style={styles.label}>原始總價：</Text><Text>{displayOriginalAmount}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.label}>變更後總價：</Text><Text style={{ color: '#D32F2F', fontWeight: 'bold' }}>{project.amendedAmount || project.originalAmount || '$0'}</Text></View>
+          </View>
+
+          <Text style={styles.sectionTitle}>變更設計紀錄</Text>
+          <View style={styles.infoCard}>
+            {(project.changeOrders || []).map((co: any, i: number) => (
+              <View key={i} style={{ marginBottom: 10, borderBottomWidth: 1, borderColor: '#eee', paddingBottom: 5 }}>
+                <Text style={{ fontWeight: 'bold', color: '#333' }}>{co.date} - 第{i + 1}次變更</Text>
+                <Text style={{ color: '#666' }}>金額: {co.amount} | 文號: {co.number}</Text>
+                <Text style={{ color: '#555' }}>理由: {co.reason}</Text>
+              </View>
+            ))}
+            {(project.changeOrders || []).length === 0 && <Text style={{ color: '#999' }}>尚無變更紀錄</Text>}
+          </View>
+
+          <Text style={styles.sectionTitle}>展延工期紀錄</Text>
+          <View style={styles.infoCard}>
+            {(project.extensions || []).map((ext: any, i: number) => (
+              <View key={i} style={{ marginBottom: 10, borderBottomWidth: 1, borderColor: '#eee', paddingBottom: 5 }}>
+                <Text style={{ fontWeight: 'bold', color: '#333' }}>{ext.date} - 展延 {ext.days} 天</Text>
+                <Text style={{ color: '#666' }}>文號: {ext.number}</Text>
+                <Text style={{ color: '#555' }}>理由: {ext.reason}</Text>
+              </View>
+            ))}
+            {(project.extensions || []).length === 0 && <Text style={{ color: '#999' }}>尚無展延紀錄</Text>}
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 }}>
+            <Text style={[styles.sectionTitle, { marginTop: 0 }]}>契約與施工圖說</Text>
+            <TouchableOpacity onPress={handleAddDocument}><Text style={{ color: 'blue' }}>+ 新增文件</Text></TouchableOpacity>
+          </View>
+
+          {(project.documents || []).map((doc: any, i: number) => (
+            <TouchableOpacity key={i} style={styles.docItem} onPress={() => handleOpenDoc(doc.url)}>
+              <Ionicons name={doc.type === 'pdf' ? 'document-text' : 'image'} size={24} color="#555" />
+              <Text style={{ marginLeft: 10 }}>{doc.title}</Text>
+            </TouchableOpacity>
+          ))}
+          {(project.documents || []).length === 0 && <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>尚無文件，請點擊新增</Text>}
+
+        </ScrollView>
+      )}
+
+      {/* 編輯 Modal */}
       <Modal visible={isEditModalVisible} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-              <Ionicons name="close" size={28} color="#333" />
-            </TouchableOpacity>
-            <Text style={{ fontSize: 18, fontWeight: 'bold' }}>編輯專案</Text>
-            <TouchableOpacity onPress={handleSave}>
-              <Text style={{ color: THEME.primary, fontWeight: 'bold', fontSize: 16 }}>儲存</Text>
+            <TouchableOpacity onPress={() => setIsEditModalVisible(false)}><Ionicons name="close" size={28} /></TouchableOpacity>
+            <Text style={{ fontSize: 18, fontWeight: 'bold' }}>編輯專案資料</Text>
+            <TouchableOpacity onPress={handleSaveProject} disabled={isSaving}>
+              {isSaving ? <ActivityIndicator /> : <Text style={{ color: 'blue', fontWeight: 'bold', fontSize: 16 }}>儲存</Text>}
             </TouchableOpacity>
           </View>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-            <ScrollView style={{ flex: 1, padding: 20 }}>
-              <Text style={styles.label}>專案名稱</Text>
-              <TextInput
-                style={styles.input}
-                value={editProject.name}
-                onChangeText={t => setEditProject({ ...editProject, name: t })}
-              />
-              <Text style={styles.label}>專案地址</Text>
-              <TextInput
-                style={styles.input}
-                value={editProject.address}
-                onChangeText={t => setEditProject({ ...editProject, address: t })}
-              />
-              <View style={[styles.row, { zIndex: 3000 }]}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.label}>工地主任</Text>
-                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowManagerPicker(!showManagerPicker)}>
-                    <Text>{editProject.manager || '請選擇'}</Text>
-                    <Ionicons name="chevron-down" size={20} />
-                  </TouchableOpacity>
-                  {showManagerPicker && (
-                    <View style={styles.dropdownList}>
-                      {managers.map(m => (
-                        <TouchableOpacity
-                          key={m}
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setEditProject({ ...editProject, manager: m });
-                            setShowManagerPicker(false)
-                          }}
-                        >
-                          <Text>{m}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>執行狀態</Text>
-                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowStatusPicker(!showStatusPicker)}>
-                    <Text>{EXECUTION_STATUS_MAP[editProject.executionStatus || 'not_started']}</Text>
-                    <Ionicons name="chevron-down" size={20} />
-                  </TouchableOpacity>
-                  {showStatusPicker && (
-                    <View style={styles.dropdownList}>
-                      {EXECUTION_STATUS_OPTIONS.map(s => (
-                        <TouchableOpacity
-                          key={s}
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setEditProject({ ...editProject, executionStatus: s as any });
-                            setShowStatusPicker(false)
-                          }}
-                        >
-                          <Text>{EXECUTION_STATUS_MAP[s]}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
+            <ScrollView style={{ padding: 20, paddingBottom: 50 }}>
+
+              <Text style={styles.groupTitle}>基本資訊</Text>
+              <Text style={styles.inputLabel}>專案名稱</Text>
+              <TextInput style={styles.input} value={editForm.name} onChangeText={t => setEditForm({ ...editForm, name: t })} />
+              <Text style={styles.inputLabel}>專案地點</Text>
+              <TextInput style={styles.input} value={editForm.address} onChangeText={t => setEditForm({ ...editForm, address: t })} />
+              <Text style={styles.inputLabel}>工地主任</Text>
+              <TextInput style={styles.input} value={editForm.manager} onChangeText={t => setEditForm({ ...editForm, manager: t })} />
+              <Text style={styles.inputLabel}>執行狀態 (planning, in-progress, completed)</Text>
+              <TextInput style={styles.input} value={editForm.status} onChangeText={t => setEditForm({ ...editForm, status: t })} />
+
+              <Text style={styles.groupTitle}>時程管理</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>決標日期</Text><TextInput style={styles.input} value={editForm.awardDate} placeholder="YYYY-MM-DD" onChangeText={t => setEditForm({ ...editForm, awardDate: t })} /></View>
+                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>開工日期</Text><TextInput style={styles.input} value={editForm.startDate} placeholder="YYYY-MM-DD" onChangeText={t => setEditForm({ ...editForm, startDate: t })} /></View>
               </View>
-              <Text style={styles.groupHeader}>時程</Text>
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 5 }}>
-                  <Text style={styles.label}>決標日期</Text>
-                  {renderDateInput('award', editProject.awardDate || '', '日期')}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>開工日期</Text>
-                  {renderDateInput('start', editProject.startDate || '', '日期')}
-                </View>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>契約工期(天)</Text><TextInput style={styles.input} value={String(editForm.duration || '')} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, duration: t })} /></View>
+                <View style={{ flex: 1 }}><Text style={styles.inputLabel}>預定竣工日 (會自動重算)</Text><TextInput style={styles.input} value={editForm.endDate} placeholder="YYYY-MM-DD" onChangeText={t => setEditForm({ ...editForm, endDate: t })} /></View>
               </View>
-              <Text style={styles.label}>契約工期 (天)</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="number-pad"
-                value={editProject.contractDuration?.toString()}
-                onChangeText={t => setEditProject({ ...editProject, contractDuration: parseInt(t) || 0 })}
-              />
-              <View style={{ height: 50 }} />
-              {user?.role === 'admin' && (
-                <TouchableOpacity onPress={handleDelete} style={styles.deleteBtnFull}>
-                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>刪除此專案</Text>
-                </TouchableOpacity>
-              )}
-              <View style={{ height: 30 }} />
+
+              <Text style={styles.groupTitle}>契約金額</Text>
+              <Text style={styles.inputLabel}>原始總價</Text>
+              <TextInput style={styles.input} value={String(editForm.originalAmount || '')} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, originalAmount: t })} />
+              <Text style={styles.inputLabel}>變更後總價</Text>
+              <TextInput style={styles.input} value={String(editForm.amendedAmount || '')} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, amendedAmount: t })} />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+                <Text style={styles.groupTitle}>變更設計紀錄</Text>
+                <TouchableOpacity onPress={() => addItemToForm('changeOrders', { date: '', amount: '', number: '', reason: '' })}><Text style={{ color: 'blue' }}>+ 新增變更</Text></TouchableOpacity>
+              </View>
+              {editForm.changeOrders?.map((item: any, i: number) => (
+                <View key={i} style={styles.subFormCard}>
+                  <TextInput style={styles.miniInput} placeholder="日期 (YYYY-MM-DD)" value={item.date} onChangeText={v => updateItemInForm('changeOrders', i, 'date', v)} />
+                  <TextInput style={styles.miniInput} placeholder="金額" value={item.amount} onChangeText={v => updateItemInForm('changeOrders', i, 'amount', v)} />
+                  <TextInput style={styles.miniInput} placeholder="文號" value={item.number} onChangeText={v => updateItemInForm('changeOrders', i, 'number', v)} />
+                  <TextInput style={styles.miniInput} placeholder="理由" value={item.reason} onChangeText={v => updateItemInForm('changeOrders', i, 'reason', v)} />
+                  <TouchableOpacity onPress={() => removeItemFromForm('changeOrders', i)}><Text style={{ color: 'red', textAlign: 'right' }}>刪除</Text></TouchableOpacity>
+                </View>
+              ))}
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+                <Text style={styles.groupTitle}>展延工期紀錄</Text>
+                <TouchableOpacity onPress={() => addItemToForm('extensions', { date: '', days: '', number: '', reason: '' })}><Text style={{ color: 'blue' }}>+ 新增展延</Text></TouchableOpacity>
+              </View>
+              {editForm.extensions?.map((item: any, i: number) => (
+                <View key={i} style={styles.subFormCard}>
+                  <TextInput style={styles.miniInput} placeholder="核准日期" value={item.date} onChangeText={v => updateItemInForm('extensions', i, 'date', v)} />
+                  <TextInput style={styles.miniInput} placeholder="展延天數" value={item.days} keyboardType="numeric" onChangeText={v => updateItemInForm('extensions', i, 'days', v)} />
+                  <TextInput style={styles.miniInput} placeholder="核准文號" value={item.number} onChangeText={v => updateItemInForm('extensions', i, 'number', v)} />
+                  <TextInput style={styles.miniInput} placeholder="理由" value={item.reason} onChangeText={v => updateItemInForm('extensions', i, 'reason', v)} />
+                  <TouchableOpacity onPress={() => removeItemFromForm('extensions', i)}><Text style={{ color: 'red', textAlign: 'right' }}>刪除</Text></TouchableOpacity>
+                </View>
+              ))}
+
+              <View style={{ height: 100 }} />
             </ScrollView>
           </KeyboardAvoidingView>
-          {showDatePicker && Platform.OS !== 'web' && (
-            <DateTimePicker value={tempDate} mode="date" display="default" onChange={onNativeDateChange} />
-          )}
         </SafeAreaView>
       </Modal>
     </View>
@@ -796,60 +459,38 @@ export default function ProjectDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.background },
-  headerSafeArea: { backgroundColor: THEME.headerBg, paddingTop: Platform.OS === 'android' ? 25 : 0 },
-  headerContent: { height: 60, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, justifyContent: 'space-between' },
-  headerTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  backBtn: { padding: 5 },
-  content: { flex: 1 },
-  card: { backgroundColor: '#fff', marginHorizontal: 15, marginTop: 15, padding: 15, borderRadius: 12 },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 12, color: '#002147' },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statusBadge: { backgroundColor: '#E3F2FD', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-  statusText: { color: '#002147', fontSize: 12, fontWeight: 'bold' },
-  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  infoText: { marginLeft: 8, color: '#333', fontSize: 14 },
-  divider: { height: 1, backgroundColor: '#eee', marginVertical: 10 },
-  labelCol: { flex: 1, color: '#666' },
-  valCol: { flex: 1, textAlign: 'right', fontWeight: '500' },
-  dateLabel: { color: '#666' },
-  dateVal: { fontWeight: '500' },
-  logItem: { borderLeftWidth: 3, borderLeftColor: '#eee', paddingLeft: 10, marginBottom: 12 },
-  logCard: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 10, padding: 15, borderRadius: 8, elevation: 1 },
-  issueBadge: { backgroundColor: '#FFE5E5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8, borderWidth: 1, borderColor: '#FF4D4F' },
-  issueText: { color: '#FF4D4F', fontSize: 10, fontWeight: 'bold' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
-  label: { fontWeight: 'bold', color: '#666', marginTop: 15, marginBottom: 5 },
-  input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10 },
-  row: { flexDirection: 'row' },
-  rowCenter: { flexDirection: 'row', alignItems: 'center' },
-  dropdownBtn: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dropdownList: { position: 'absolute', top: 45, left: 0, right: 0, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, elevation: 5, zIndex: 9999 },
-  dropdownItem: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  groupHeader: { fontSize: 13, color: '#999', backgroundColor: '#f0f0f0', padding: 5, marginTop: 20, fontWeight: 'bold' },
-  deleteBtnFull: { backgroundColor: '#FF6B6B', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 20 },
-  dateBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 10 },
-  dateBtnText: { color: '#333' },
-  smallBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
-  tabContainer: { flexDirection: 'row', backgroundColor: THEME.headerBg, paddingHorizontal: 15, paddingBottom: 10 },
-  tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
-  tabBtnActive: { borderBottomColor: THEME.primary },
-  tabText: { color: 'rgba(255,255,255,0.6)', fontWeight: 'bold', fontSize: 15 },
-  tabTextActive: { color: '#fff' },
-  descriptionText: { color: '#555', lineHeight: 20, marginTop: 10, fontSize: 14 },
-  addSmallBtn: { backgroundColor: THEME.primary, flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
-  docItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FB', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#eee' },
-  docIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 12, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
-  docTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  docMeta: { fontSize: 12, color: '#999', marginTop: 2 },
-  filePickerBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F7FA', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed', marginVertical: 15 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  docModalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, minHeight: '40%', paddingBottom: 40 },
-  submitBtnFull: { backgroundColor: THEME.primary, paddingVertical: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  metricsRow: { flexDirection: 'row', backgroundColor: '#fff', marginHorizontal: 15, marginTop: 15, borderRadius: 12, paddingVertical: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  metricItem: { flex: 1, alignItems: 'center', borderRightWidth: 1, borderRightColor: '#eee' },
-  metricLabel: { fontSize: 10, color: '#999', marginBottom: 4, fontWeight: '600' },
-  metricValue: { fontSize: 14, fontWeight: 'bold', color: '#333' },
-  statusBadgeSmall: { backgroundColor: '#E3F2FD', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  statusTextSmall: { color: '#002147', fontSize: 10, fontWeight: 'bold' }
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#F5F7FA' },
+  headerSafeArea: { backgroundColor: '#002147' },
+  customHeader: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15 },
+  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  headerBtn: { padding: 5 },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#002147' },
+  tab: { flex: 1, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  activeTab: { borderBottomColor: '#C69C6D' },
+  tabText: { color: '#aaa', fontWeight: 'bold' },
+  activeTabText: { color: '#fff' },
+  scrollContent: { padding: 20, paddingBottom: 50 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#002147', marginTop: 20, marginBottom: 10 },
+  dashboardRow: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 12, padding: 15, justifyContent: 'space-between' },
+  infoItem: { alignItems: 'center', flex: 1 },
+  infoLabel: { fontSize: 12, color: '#666', marginBottom: 4 },
+  infoValue: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  infoSub: { fontSize: 10, color: '#999' },
+  chartCard: { backgroundColor: '#fff', borderRadius: 12, padding: 10, alignItems: 'center' },
+  logItem: { backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10 },
+  logDate: { fontWeight: 'bold', color: '#333' },
+  tagIssue: { backgroundColor: '#FF8F00', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  infoCard: { backgroundColor: '#fff', padding: 15, borderRadius: 12 },
+  infoRow: { flexDirection: 'row', marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f9f9f9', paddingBottom: 8 },
+  dateRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  label: { color: '#666', width: 90, fontWeight: '600' },
+  docItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 8 },
+  // Modal
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderColor: '#eee', alignItems: 'center' },
+  groupTitle: { fontSize: 16, fontWeight: 'bold', color: '#002147', marginTop: 20, marginBottom: 5, backgroundColor: '#eef2f6', padding: 8, borderRadius: 5 },
+  inputLabel: { marginTop: 10, marginBottom: 5, fontWeight: 'bold', color: '#555' },
+  input: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8, fontSize: 16, backgroundColor: '#fafafa' },
+  subFormCard: { backgroundColor: '#fff', padding: 10, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 10 },
+  miniInput: { borderWidth: 1, borderColor: '#eee', padding: 8, borderRadius: 5, marginBottom: 5, fontSize: 14 }
 });
