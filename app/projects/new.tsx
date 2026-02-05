@@ -138,6 +138,11 @@ export default function NewProjectScreen() {
     }));
   };
 
+  const formatNumber = (num: string) => {
+    if (!num) return '';
+    return num.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  };
+
   // --- 輔助函式：更新陣列 ---
   const updateArray = (field: 'changeOrders' | 'extensions' | 'subsequentExpansions' | 'documents', newArray: any[]) => {
     setFormData(prev => ({ ...prev, [field]: newArray }));
@@ -435,11 +440,27 @@ export default function NewProjectScreen() {
 
               <View style={styles.section}>
                 <Text style={styles.sectionHeader}>金額與變更設計</Text>
-                <Text style={styles.label}>契約金額 (原)</Text>
-                <TextInput style={styles.input} value={formData.originalAmount} onChangeText={t => setFormData({ ...formData, originalAmount: t })} keyboardType="numeric" placeholder="請輸入金額" />
-
-                <Text style={styles.label}>變更後總價 (自動計算)</Text>
-                <TextInput style={[styles.input, { backgroundColor: '#eee' }]} value={formData.amendedAmount} editable={false} placeholder="無變更" />
+                <View style={styles.row}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.label}>契約金額 (元)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={formatNumber(formData.originalAmount)}
+                      onChangeText={t => setFormData({ ...formData, originalAmount: t.replace(/,/g, '') })}
+                      keyboardType="numeric"
+                      placeholder="請輸入金額"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>變更後總價 (元)</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: '#eee' }]}
+                      value={formatNumber(formData.amendedAmount)}
+                      editable={false}
+                      placeholder="無變更"
+                    />
+                  </View>
+                </View>
 
                 <Text style={[styles.label, { marginTop: 15 }]}>變更設計明細</Text>
                 {formData.changeOrders.map((co, i) => (
