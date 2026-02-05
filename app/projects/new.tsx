@@ -472,7 +472,7 @@ export default function NewProjectScreen() {
                 <Text style={styles.sectionHeader}>金額與變更設計</Text>
                 <View style={styles.row}>
                   <View style={{ flex: 1, marginRight: 10 }}>
-                    <Text style={styles.label}>契約金額 (元)</Text>
+                    <Text style={styles.label}>契約金額</Text>
                     <TextInput
                       style={styles.input}
                       value={formatNumber(formData.originalAmount)}
@@ -482,7 +482,7 @@ export default function NewProjectScreen() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>變更後總價 (元)</Text>
+                    <Text style={styles.label}>變更後總價</Text>
                     <TextInput
                       style={[styles.input, { backgroundColor: '#eee' }]}
                       value={formatNumber(formData.amendedAmount)}
