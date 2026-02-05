@@ -62,7 +62,7 @@ export default function NewProjectScreen() {
   useEffect(() => {
     const fetchPersonnel = async () => {
       try {
-        const q = query(collection(db, 'users'), orderBy('name', 'asc'));
+        const q = query(collection(db, 'personnel'), orderBy('name', 'asc'));
         const querySnapshot = await getDocs(q);
         const list: Personnel[] = [];
         querySnapshot.forEach((doc) => {
