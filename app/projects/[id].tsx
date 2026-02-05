@@ -55,7 +55,8 @@ export default function ProjectDetailScreen() {
         const safeP = p as any;
         setEditForm({
           ...safeP,
-          originalAmount: safeP.originalAmount || safeP.contractPrice || safeP.totalPrice || '',
+          originalAmount: String(safeP.originalAmount || safeP.contractPrice || safeP.totalPrice || '').replace(/,/g, ''),
+          amendedAmount: String(safeP.amendedAmount || '').replace(/,/g, ''),
           changeOrders: safeP.changeOrders || [],
           extensions: safeP.extensions || [],
           documents: safeP.documents || []
@@ -195,9 +196,25 @@ export default function ProjectDetailScreen() {
     return map[status] || status || '未知狀態';
   };
 
-  const handleOpenDoc = (url: string) => {
-    if (Platform.OS === 'web') window.open(url, '_blank');
-    else Linking.openURL(url);
+  const handleOpenDoc = async (url: string) => {
+    if (!url) return Alert.alert('錯誤', '無效的連結');
+    try {
+      if (Platform.OS === 'web') window.open(url, '_blank');
+      else {
+        const supported = await Linking.canOpenURL(url);
+        if (supported) await Linking.openURL(url);
+        else Alert.alert('錯誤', '無法開啟此檔案');
+      }
+    } catch (e) {
+      Alert.alert('錯誤', '開啟檔案時發生錯誤');
+    }
+  };
+
+  const formatCurrency = (val: number | string | undefined) => {
+    if (!val) return '0';
+    const strVal = String(val).replace(/,/g, '');
+    const num = parseFloat(strVal);
+    return isNaN(num) ? '0' : num.toLocaleString();
   };
 
   const handleSaveProject = async () => {
@@ -338,8 +355,8 @@ export default function ProjectDetailScreen() {
 
           <Text style={styles.sectionTitle}>契約金額</Text>
           <View style={styles.infoCard}>
-            <View style={styles.infoRow}><Text style={styles.label}>原始總價：</Text><Text>{displayOriginalAmount}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.label}>變更後總價：</Text><Text style={{ color: '#D32F2F', fontWeight: 'bold' }}>{project.amendedAmount || project.originalAmount || '$0'}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.label}>原始總價：</Text><Text>${formatCurrency(displayOriginalAmount)}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.label}>變更後總價：</Text><Text style={{ color: '#D32F2F', fontWeight: 'bold' }}>${formatCurrency(project.amendedAmount || project.originalAmount)}</Text></View>
           </View>
 
           <Text style={styles.sectionTitle}>變更設計紀錄</Text>
@@ -465,11 +482,11 @@ const styles = StyleSheet.create({
   customHeader: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15 },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
   headerBtn: { padding: 5 },
-  tabContainer: { flexDirection: 'row', backgroundColor: '#002147' },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   tab: { flex: 1, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   activeTab: { borderBottomColor: '#C69C6D' },
-  tabText: { color: '#aaa', fontWeight: 'bold' },
-  activeTabText: { color: '#fff' },
+  tabText: { color: '#999', fontWeight: 'bold' },
+  activeTabText: { color: '#C69C6D' },
   scrollContent: { padding: 20, paddingBottom: 50 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#002147', marginTop: 20, marginBottom: 10 },
   dashboardRow: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 12, padding: 15, justifyContent: 'space-between' },

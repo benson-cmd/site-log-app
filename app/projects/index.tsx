@@ -27,9 +27,10 @@ const EXECUTION_STATUS_MAP: Record<string, string> = {
 };
 
 const formatCurrency = (val: number | string | undefined) => {
-  if (!val) return '$0';
-  const num = typeof val === 'string' ? parseFloat(val) : val;
-  return isNaN(num) ? '$0' : num.toLocaleString();
+  if (!val) return '0';
+  const strVal = String(val).replace(/,/g, '');
+  const num = parseFloat(strVal);
+  return isNaN(num) ? '0' : num.toLocaleString();
 };
 
 export default function ProjectsScreen() {
@@ -54,11 +55,27 @@ export default function ProjectsScreen() {
   };
 
   const getPlannedProgress = (project: Project) => {
-    if (!project.startDate || !project.contractDuration) return 0;
-    // 簡易插值計算 (若需精確 S-Curve 邏輯可引入 helper)
-    const schedule = project.scheduleData || [];
-    // ...這裡簡化顯示，詳情頁有完整計算
-    return 0; // 列表頁暫時顯示 0 或從 scheduleData 查找今日
+    const p = project as any;
+    if (!p.startDate || !p.duration) return 0;
+
+    // Linear interpolation
+    const startStr = String(p.startDate).replace(/\//g, '-');
+    const duration = parseInt(String(p.duration), 10) || 0;
+
+    if (!startStr || duration <= 0) return 0;
+
+    const start = new Date(startStr).getTime();
+    const end = start + (duration * 24 * 60 * 60 * 1000);
+    const now = new Date().getTime();
+
+    if (now < start) return 0;
+    if (now > end) return 100;
+
+    const totalTime = end - start;
+    const elapsedTime = now - start;
+    const progress = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+
+    return Math.round(progress * 10) / 10;
   };
 
   const getPendingIssuesCount = (projectLogs: any[]) => {
@@ -112,43 +129,59 @@ export default function ProjectsScreen() {
           contentContainerStyle={{ padding: 15, paddingBottom: 80 }}
           renderItem={({ item }) => {
             const projectLogs = logs.filter(l => l.projectId === item.id);
-            const actual = getTodayProgress(projectLogs);
+            const actual = getTodayProgress(projectLogs) || 0;
+            const planned = getPlannedProgress(item);
+            const diff = Math.round((actual - planned) * 10) / 10;
             const pendingCount = getPendingIssuesCount(projectLogs);
+
+            const pItem = item as any;
+            const displayAmount = pItem.amendedAmount || pItem.originalAmount || pItem.contractAmount;
 
             return (
               <TouchableOpacity style={styles.card} onPress={() => router.push(`/projects/${item.id}`)}>
+                {/* Row 1: Title & Status */}
                 <View style={styles.cardHeader}>
+                  <Text style={styles.projectTitle}>{item.name}</Text>
                   <View style={[styles.statusTag, { backgroundColor: '#E3F2FD' }]}>
                     <Text style={{ color: '#002147', fontSize: 12, fontWeight: 'bold' }}>{EXECUTION_STATUS_MAP[item.executionStatus || 'not_started'] || item.executionStatus}</Text>
                   </View>
-                  {user?.role === 'admin' && (
-                    <TouchableOpacity onPress={() => handleDeleteParams(item.id, item.name)} style={{ padding: 5 }}>
-                      <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                    </TouchableOpacity>
-                  )}
                 </View>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={styles.projectTitle}>{item.name}</Text>
-                  {pendingCount > 0 && (
-                    <View style={styles.alertBadge}>
-                      <Text style={styles.alertText}>⚠️ 異常: {pendingCount}</Text>
-                    </View>
-                  )}
+                {/* Row 2: Location | Total Price */}
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={{ color: '#666', fontSize: 13, marginBottom: 4 }}>📍 {item.address}</Text>
+                  <Text style={{ color: '#666', fontSize: 13 }}>💰 總價：${formatCurrency(displayAmount)}</Text>
                 </View>
 
-                <Text style={styles.projectInfo}>📍 {item.address}</Text>
-                <Text style={styles.projectInfo}>💰 總價：${formatCurrency(item.currentContractAmount || item.contractAmount)}</Text>
+                {/* Row 3: Progress Bar */}
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressBar, { width: `${Math.min(actual || 0, 100)}%` }]} />
+                </View>
 
-                <View style={styles.progressSection}>
-                  <Text style={{ fontSize: 12, color: '#666' }}>
-                    實際: <Text style={{ fontWeight: 'bold', color: actual !== null ? '#333' : '#FF4D4F' }}>{actual !== null ? `${actual}%` : '尚未更新'}</Text>
+                {/* Row 4: Stats */}
+                <View style={styles.statsRow}>
+                  <Text style={{ fontSize: 12, color: diff >= 0 ? '#4CAF50' : '#FF4D4F', fontWeight: 'bold' }}>
+                    實際: {actual}%
                   </Text>
-                  {/* 進度條僅示意 */}
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressBar, { width: `${Math.min(actual || 0, 100)}%` }]} />
-                  </View>
+                  <Text style={{ fontSize: 12, color: '#999' }}>
+                    預定: {planned}%
+                  </Text>
+                  <Text style={{ fontSize: 12, color: diff >= 0 ? '#4CAF50' : '#FF4D4F' }}>
+                    差異: {diff > 0 ? '+' : ''}{diff}%
+                  </Text>
                 </View>
+
+                {pendingCount > 0 && (
+                  <View style={[styles.alertBadge, { alignSelf: 'flex-start', marginTop: 10 }]}>
+                    <Text style={styles.alertText}>⚠️ 異常: {pendingCount}</Text>
+                  </View>
+                )}
+
+                {user?.role === 'admin' && (
+                  <TouchableOpacity onPress={() => handleDeleteParams(item.id, item.name)} style={{ position: 'absolute', bottom: 10, right: 10 }}>
+                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -183,6 +216,7 @@ const styles = StyleSheet.create({
   alertBadge: { backgroundColor: '#FFE5E5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#FF4D4F' },
   alertText: { color: '#FF4D4F', fontSize: 12, fontWeight: 'bold' },
   progressSection: { marginTop: 15 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   progressTrack: { height: 6, backgroundColor: '#eee', borderRadius: 3, marginTop: 5, overflow: 'hidden' },
   progressBar: { height: '100%', backgroundColor: THEME.primary },
   fab: { position: 'absolute', right: 20, bottom: 30, width: 60, height: 60, borderRadius: 30, backgroundColor: THEME.primary, justifyContent: 'center', alignItems: 'center', elevation: 5 },
