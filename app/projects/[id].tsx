@@ -91,7 +91,8 @@ export default function ProjectDetailScreen() {
           amendedAmount: String(safeP.amendedAmount || '').replace(/,/g, ''),
           changeOrders: safeP.changeOrders || [],
           extensions: safeP.extensions || [],
-          documents: safeP.documents || []
+          documents: safeP.documents || [],
+          scheduleFile: safeP.scheduleFile || null
         });
       }
     }
@@ -231,14 +232,30 @@ export default function ProjectDetailScreen() {
   const handleOpenDoc = async (url: string) => {
     if (!url) return Alert.alert('錯誤', '無效的連結');
     try {
-      if (Platform.OS === 'web') window.open(url, '_blank');
-      else {
+      if (Platform.OS === 'web') {
+        // Try to open in new tab
+        const newWindow = window.open(url, '_blank');
+        // If blocked or local file access issue
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          Alert.alert(
+            '無法開啟文件',
+            '此文件可能是本地檔案，瀏覽器無法直接存取。請將文件上傳至雲端儲存服務（如 Cloudinary 或 Firebase Storage）後再試。'
+          );
+        }
+      } else {
         const supported = await Linking.canOpenURL(url);
         if (supported) await Linking.openURL(url);
         else Alert.alert('錯誤', '無法開啟此檔案');
       }
     } catch (e) {
-      Alert.alert('錯誤', '開啟檔案時發生錯誤');
+      if (Platform.OS === 'web') {
+        Alert.alert(
+          '檔案存取錯誤',
+          '無法存取此文件。本地檔案路徑在 Web 版本中無法直接開啟，建議使用雲端儲存。'
+        );
+      } else {
+        Alert.alert('錯誤', '開啟檔案時發生錯誤');
+      }
     }
   };
 
@@ -322,15 +339,48 @@ export default function ProjectDetailScreen() {
     setEditForm({ ...editForm, documents: newDocs });
   };
 
+  // CSV Schedule Management
+  const handleImportCSVForEdit = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'application/vnd.ms-excel', 'text/comma-separated-values'],
+        copyToCacheDirectory: true
+      });
+
+      if (!result.canceled && result.assets) {
+        setEditForm((prev: any) => ({ ...prev, scheduleFile: result.assets[0] }));
+        Alert.alert('成功', `已讀取檔案：${result.assets[0].name}`);
+      }
+    } catch (e) {
+      Alert.alert('錯誤', '無法讀取檔案');
+    }
+  };
+
+  const handleRemoveCSVForEdit = () => {
+    setEditForm((prev: any) => ({ ...prev, scheduleFile: null }));
+  };
+
   const handleSaveProject = async () => {
     setIsSaving(true);
     try {
       const docRef = doc(db, 'projects', project.id);
-      await updateDoc(docRef, editForm);
-      setProject(editForm);
+
+      // Sanitize form data before saving (especially scheduleFile)
+      const projectData = { ...editForm };
+      if (projectData.scheduleFile) {
+        projectData.scheduleFile = {
+          name: projectData.scheduleFile.name,
+          uri: projectData.scheduleFile.uri,
+          mimeType: projectData.scheduleFile.mimeType
+        };
+      }
+
+      await updateDoc(docRef, projectData);
+      setProject(projectData);
       setIsEditModalVisible(false);
       Alert.alert("成功", "專案資料已更新");
     } catch (e) {
+      console.error('更新失敗:', e);
       Alert.alert("錯誤", "更新失敗，請檢查網路");
     } finally {
       setIsSaving(false);
@@ -558,6 +608,23 @@ export default function ProjectDetailScreen() {
                 <View style={{ flex: 1 }}><Text style={styles.inputLabel}>契約工期(天)</Text><TextInput style={styles.input} value={String(editForm.duration || '')} keyboardType="numeric" onChangeText={t => setEditForm({ ...editForm, duration: t })} /></View>
                 <View style={{ flex: 1 }}><Text style={styles.inputLabel}>預定竣工日</Text><DateInput value={editForm.endDate} field="endDate" /></View>
               </View>
+
+              {/* CSV Schedule File */}
+              <Text style={styles.inputLabel}>預定進度表 (CSV)</Text>
+              {editForm.scheduleFile ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#4CAF50' }}>
+                  <Ionicons name="document-attach" size={20} color="#4CAF50" style={{ marginRight: 8 }} />
+                  <Text style={{ flex: 1, color: '#2E7D32', fontSize: 14 }}>{editForm.scheduleFile.name || '已選擇檔案'}</Text>
+                  <TouchableOpacity onPress={handleRemoveCSVForEdit}>
+                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={{ flexDirection: 'row', backgroundColor: '#4CAF50', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center', alignSelf: 'flex-start' }} onPress={handleImportCSVForEdit}>
+                  <Ionicons name="document-attach" size={18} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>匯入</Text>
+                </TouchableOpacity>
+              )}
 
               <Text style={styles.groupTitle}>契約金額</Text>
               <View style={{ flexDirection: 'row', gap: 10 }}>
