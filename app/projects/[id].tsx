@@ -233,13 +233,22 @@ export default function ProjectDetailScreen() {
     if (!url) return Alert.alert('錯誤', '無效的連結');
     try {
       if (Platform.OS === 'web') {
-        // Try to open in new tab
+        // Check if it's a blob URL
+        if (url.startsWith('blob:')) {
+          Alert.alert(
+            '無法預覽文件',
+            '本地 blob 檔案無法在新分頁中預覽。請在生產環境中使用雲端儲存服務（如 Cloudinary 或 Firebase Storage）進行檔案管理。'
+          );
+          return;
+        }
+
+        // Try to open regular URLs in new tab
         const newWindow = window.open(url, '_blank');
         // If blocked or local file access issue
         if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
           Alert.alert(
             '無法開啟文件',
-            '此文件可能是本地檔案，瀏覽器無法直接存取。請將文件上傳至雲端儲存服務（如 Cloudinary 或 Firebase Storage）後再試。'
+            '此文件可能是本地檔案，瀏覽器無法直接存取。請將文件上傳至雲端儲存服務後再試。'
           );
         }
       } else {
@@ -410,6 +419,11 @@ export default function ProjectDetailScreen() {
         title: project.name,
         headerStyle: { backgroundColor: '#002147' },
         headerTintColor: '#fff',
+        headerLeft: () => (
+          <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+        ),
         headerRight: () => (
           <TouchableOpacity onPress={() => setIsEditModalVisible(true)} style={{ marginRight: 10 }}>
             <Ionicons name="create-outline" size={24} color="#fff" />
