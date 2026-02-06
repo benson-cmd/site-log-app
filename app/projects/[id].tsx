@@ -230,6 +230,7 @@ export default function ProjectDetailScreen() {
   };
 
   const handleOpenDoc = async (url: string) => {
+    console.log('Opening document:', url);
     if (!url) return Alert.alert('錯誤', '無效的連結');
     try {
       if (Platform.OS === 'web') {
@@ -257,6 +258,7 @@ export default function ProjectDetailScreen() {
         else Alert.alert('錯誤', '無法開啟此檔案');
       }
     } catch (e) {
+      console.error('Error opening document:', e);
       if (Platform.OS === 'web') {
         Alert.alert(
           '檔案存取錯誤',
@@ -541,12 +543,12 @@ export default function ProjectDetailScreen() {
           <Text style={[styles.sectionTitle, { marginTop: 20 }]}>契約與施工圖說</Text>
 
           {(project.documents || []).map((doc: any, i: number) => (
-            <TouchableOpacity key={i} style={styles.docItem} onPress={() => handleOpenDoc(doc.url)}>
+            <TouchableOpacity key={i} style={styles.docItem} onPress={() => handleOpenDoc(doc.url || doc.uri)}>
               <Ionicons name={doc.type === 'pdf' ? 'document-text' : 'image'} size={24} color="#555" />
-              <Text style={{ marginLeft: 10 }}>{doc.title}</Text>
+              <Text style={{ marginLeft: 10 }}>{doc.title || doc.name}</Text>
             </TouchableOpacity>
           ))}
-          {(project.documents || []).length === 0 && <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>尚無文件，請點擊新增</Text>}
+          {(project.documents || []).length === 0 && <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>尚無文件資料</Text>}
 
         </ScrollView>
       )}
