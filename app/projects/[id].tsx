@@ -229,44 +229,39 @@ export default function ProjectDetailScreen() {
     return map[status] || status || '未知狀態';
   };
 
-  const handleOpenDoc = async (url: string) => {
-    console.log('Opening document:', url);
-    if (!url) return Alert.alert('錯誤', '無效的連結');
+  const handleOpenDoc = async (doc: any) => {
+    const targetUrl = doc.url || doc.uri;
+    console.log("Document Data:", doc);
+
+    if (!targetUrl) {
+      alert("Error: No URL found. Fields: " + Object.keys(doc).join(", "));
+      return;
+    }
+
+    // Diagnostic alert to confirm click is registered
+    alert("Attempting to open: " + targetUrl);
+
     try {
       if (Platform.OS === 'web') {
-        // Check if it's a blob URL
-        if (url.startsWith('blob:')) {
-          Alert.alert(
-            '無法預覽文件',
-            '本地 blob 檔案無法在新分頁中預覽。請在生產環境中使用雲端儲存服務（如 Cloudinary 或 Firebase Storage）進行檔案管理。'
-          );
-          return;
-        }
-
-        // Try to open regular URLs in new tab
-        const newWindow = window.open(url, '_blank');
-        // If blocked or local file access issue
-        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-          Alert.alert(
-            '無法開啟文件',
-            '此文件可能是本地檔案，瀏覽器無法直接存取。請將文件上傳至雲端儲存服務後再試。'
-          );
-        }
+        // Use hidden anchor tag for better Web compatibility
+        const link = document.createElement('a');
+        link.href = targetUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
-        const supported = await Linking.canOpenURL(url);
-        if (supported) await Linking.openURL(url);
-        else Alert.alert('錯誤', '無法開啟此檔案');
+        const supported = await Linking.canOpenURL(targetUrl);
+        if (supported) {
+          await Linking.openURL(targetUrl);
+        } else {
+          alert("Cannot open URL on this device: " + targetUrl);
+        }
       }
-    } catch (e) {
-      console.error('Error opening document:', e);
-      if (Platform.OS === 'web') {
-        Alert.alert(
-          '檔案存取錯誤',
-          '無法存取此文件。本地檔案路徑在 Web 版本中無法直接開啟，建議使用雲端儲存。'
-        );
-      } else {
-        Alert.alert('錯誤', '開啟檔案時發生錯誤');
-      }
+    } catch (error: any) {
+      console.error("Open Doc Error:", error);
+      alert("Failed to open: " + error.message);
     }
   };
 
@@ -542,13 +537,20 @@ export default function ProjectDetailScreen() {
 
           <Text style={[styles.sectionTitle, { marginTop: 20 }]}>契約與施工圖說</Text>
 
+          {(!project.documents || project.documents.length === 0) && (
+            <Text style={{ color: 'red', padding: 10 }}>Debug: No documents found in database for this project.</Text>
+          )}
+
           {(project.documents || []).map((doc: any, i: number) => (
-            <TouchableOpacity key={i} style={styles.docItem} onPress={() => handleOpenDoc(doc.url || doc.uri)}>
+            <TouchableOpacity
+              key={i}
+              style={[styles.docItem, { padding: 15 }]}
+              onPress={() => handleOpenDoc(doc)}
+            >
               <Ionicons name={doc.type === 'pdf' ? 'document-text' : 'image'} size={24} color="#555" />
-              <Text style={{ marginLeft: 10 }}>{doc.title || doc.name}</Text>
+              <Text style={{ marginLeft: 10, flex: 1 }}>{doc.title || doc.name}</Text>
             </TouchableOpacity>
           ))}
-          {(project.documents || []).length === 0 && <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>尚無文件資料</Text>}
 
         </ScrollView>
       )}
