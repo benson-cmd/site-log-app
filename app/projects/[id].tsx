@@ -181,7 +181,7 @@ export default function ProjectDetailScreen() {
         return { date: dateStr, value };
       }).filter((p: any) => p.date && !isNaN(p.value));
 
-      setPlannedData(parsedData.sort((a: any, b: any) => a.date.localeCompare(b.date)));
+      setPlannedData(parsedData.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()));
     } catch (error) {
       console.error('CSV parse error:', error);
       Alert.alert('警告', '無法讀取進度表數據');
@@ -238,14 +238,18 @@ export default function ProjectDetailScreen() {
 
       const mappedPlanned = points.map(pointTs => {
         if (plannedData.length === 0) return 0;
-        const cleanPlanned = plannedData.map((p: any) => ({
-          ts: new Date(p.date).getTime(),
-          val: p.value
-        })).sort((a: any, b: any) => a.ts - b.ts);
 
-        const pastPoints = cleanPlanned.filter((p: any) => p.ts <= pointTs);
-        if (pastPoints.length > 0) return pastPoints[pastPoints.length - 1].val;
-        return cleanPlanned[0].val || 0;
+        // Find the record where its date is the latest date before or on pointTs
+        let latestValue = 0;
+        for (const p of plannedData) {
+          const pTs = new Date(p.date.replace(/\//g, '-')).getTime();
+          if (pTs <= pointTs) {
+            latestValue = p.value;
+          } else {
+            break; // Since plannedData is sorted by date
+          }
+        }
+        return latestValue;
       });
 
       const hasActual = mappedActual.some(d => d !== null);
@@ -420,57 +424,50 @@ export default function ProjectDetailScreen() {
   };
 
   const handleSaveProject = async () => {
-    console.log("Starting Save Process...");
-    console.log("Current Edit Form Data:", editForm);
     setIsSaving(true);
     try {
       const docRef = doc(db, 'projects', project.id);
-      const projectData = { ...editForm };
+      const updatedForm = { ...editForm };
 
-      // 1. 上傳預定進度表 (CSV)
-      if (projectData.scheduleFile && projectData.scheduleFile.uri && projectData.scheduleFile.uri.startsWith('blob:')) {
+      // A. 上傳預定進度表 (CSV) 如果是新的
+      if (updatedForm.scheduleFile && updatedForm.scheduleFile.uri && updatedForm.scheduleFile.uri.startsWith('blob:')) {
         console.log("Uploading new CSV to Cloudinary...");
-        const uploadedUrl = await uploadToCloudinary(projectData.scheduleFile.uri, projectData.scheduleFile.name);
-        projectData.scheduleFile = {
-          name: projectData.scheduleFile.name,
+        const uploadedUrl = await uploadToCloudinary(updatedForm.scheduleFile.uri, updatedForm.scheduleFile.name);
+        updatedForm.scheduleFile = {
+          name: updatedForm.scheduleFile.name,
           url: uploadedUrl
         };
-        console.log("CSV Uploaded successfully:", uploadedUrl);
       }
 
-      // 2. 批次上傳契約文件
-      if (projectData.documents && projectData.documents.length > 0) {
+      // B. 批次上傳契約文件 如果是新的
+      if (updatedForm.documents && updatedForm.documents.length > 0) {
         console.log("Checking documents for uploads...");
-        const updatedDocs = await Promise.all(projectData.documents.map(async (doc: any) => {
-          if (doc.url && doc.url.startsWith('blob:')) {
-            console.log(`Uploading document: ${doc.name}...`);
-            const uploadedUrl = await uploadToCloudinary(doc.url, doc.name);
-            return { ...doc, url: uploadedUrl };
+        const updatedDocs = await Promise.all(updatedForm.documents.map(async (docItem: any) => {
+          if (docItem.url && docItem.url.startsWith('blob:')) {
+            console.log(`Uploading document: ${docItem.name}...`);
+            const uploadedUrl = await uploadToCloudinary(docItem.url, docItem.name);
+            return { ...docItem, url: uploadedUrl };
           }
-          return doc;
+          return docItem;
         }));
-        projectData.documents = updatedDocs;
-        console.log("Documents processed.");
+        updatedForm.documents = updatedDocs;
       }
 
-      // 3. Data Sanitization (CRITICAL)
-      // Firestore only accepts plain objects/primitives. Remove any raw File or hidden objects.
-      const cleanData = JSON.parse(JSON.stringify(projectData));
-      console.log("Cleaned Data for Firestore:", cleanData);
+      // C. Deep Clean Data (CRITICAL: Firestore Error Fix)
+      // 移除所有不可序列化的物件 (例如從 Picker 拿到的 raw File 物件)
+      const sanitizedData = JSON.parse(JSON.stringify(updatedForm));
+      console.log("Cleaned Data for Firestore:", sanitizedData);
 
-      // 4. Update Firestore
-      await updateDoc(docRef, cleanData);
+      // D. 更新 Firestore
+      await updateDoc(docRef, sanitizedData);
 
       console.log("Firestore Update Success!");
-      setProject(cleanData);
+      setProject(sanitizedData);
       setIsEditModalVisible(false);
-
-      if (Platform.OS === 'web') window.alert("專案資料已成功更新！");
-      else Alert.alert("成功", "專案已更新");
+      alert("儲存成功！");
     } catch (error: any) {
-      console.error("Save Error Detail:", error);
-      if (Platform.OS === 'web') window.alert("儲存失敗: " + error.message);
-      else Alert.alert("錯誤", "更新失敗: " + error.message);
+      console.error("Save failed:", error);
+      alert("儲存失敗: " + error.message);
     } finally {
       setIsSaving(false);
     }
@@ -871,7 +868,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   calContent: { width: 340, backgroundColor: '#fff', padding: 20, borderRadius: 10 },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' },
-  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333333' },
   weekHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   weekText: { width: 40, textAlign: 'center', color: '#999', fontWeight: 'bold', fontSize: 14 },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
