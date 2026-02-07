@@ -252,11 +252,11 @@ export default function ProjectDetailScreen() {
         return latestValue;
       });
 
-      const hasActual = mappedActual.some(d => d !== null);
+      const hasActual = mappedActual.some(d => d !== null && d !== 0);
       setChartData({
         labels: labelsStr,
         actual: hasActual ? mappedActual : [0],
-        planned: mappedPlanned.length > 0 ? mappedPlanned : [0]
+        planned: mappedPlanned.some(v => v > 0) ? mappedPlanned : [0]
       });
     }
   }, [project, projectLogs, calculateDates, plannedData]);
@@ -429,39 +429,39 @@ export default function ProjectDetailScreen() {
       const docRef = doc(db, 'projects', project.id);
       const updatedForm = { ...editForm };
 
-      // A. 上傳預定進度表 (CSV) 如果是新的
-      if (updatedForm.scheduleFile && updatedForm.scheduleFile.uri && updatedForm.scheduleFile.uri.startsWith('blob:')) {
+      // A. 上傳預定進度表 (CSV)
+      const scheduleFile = updatedForm.scheduleFile;
+      if (scheduleFile && scheduleFile.uri && String(scheduleFile.uri).startsWith('blob:')) {
         console.log("Uploading new CSV to Cloudinary...");
-        const uploadedUrl = await uploadToCloudinary(updatedForm.scheduleFile.uri, updatedForm.scheduleFile.name);
+        const uploadedUrl = await uploadToCloudinary(scheduleFile.uri, scheduleFile.name);
         updatedForm.scheduleFile = {
-          name: updatedForm.scheduleFile.name,
+          name: scheduleFile.name,
           url: uploadedUrl
         };
       }
 
-      // B. 批次上傳契約文件 如果是新的
+      // B. 批次上傳契約文件
       if (updatedForm.documents && updatedForm.documents.length > 0) {
         console.log("Checking documents for uploads...");
-        const updatedDocs = await Promise.all(updatedForm.documents.map(async (docItem: any) => {
-          if (docItem.url && docItem.url.startsWith('blob:')) {
+        updatedForm.documents = await Promise.all(updatedForm.documents.map(async (docItem: any) => {
+          // 只有 blob: 才上傳，否則保留原樣
+          if (docItem.url && String(docItem.url).startsWith('blob:')) {
             console.log(`Uploading document: ${docItem.name}...`);
             const uploadedUrl = await uploadToCloudinary(docItem.url, docItem.name);
             return { ...docItem, url: uploadedUrl };
           }
           return docItem;
         }));
-        updatedForm.documents = updatedDocs;
       }
 
       // C. Deep Clean Data (CRITICAL: Firestore Error Fix)
-      // 移除所有不可序列化的物件 (例如從 Picker 拿到的 raw File 物件)
+      // 使用 JSON.parse(JSON.stringify()) 徹底移除不可序列化物件
       const sanitizedData = JSON.parse(JSON.stringify(updatedForm));
-      console.log("Cleaned Data for Firestore:", sanitizedData);
+      console.log("Sanitized project data:", sanitizedData);
 
       // D. 更新 Firestore
       await updateDoc(docRef, sanitizedData);
 
-      console.log("Firestore Update Success!");
       setProject(sanitizedData);
       setIsEditModalVisible(false);
       alert("儲存成功！");
@@ -549,6 +549,7 @@ export default function ProjectDetailScreen() {
                   labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
                   propsForDots: { r: "4" }
                 }}
+                fromZero={true}
                 bezier
                 style={{ marginVertical: 8, borderRadius: 16 }}
                 withDots={true}
@@ -655,7 +656,7 @@ export default function ProjectDetailScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
             <ScrollView style={{ padding: 20, paddingBottom: 50 }}>
 
-              <View style={{ zIndex: 3000 }}>
+              <View style={{ zIndex: 5000 }}>
                 <Text style={styles.groupTitle}>基本資訊</Text>
                 <Text style={styles.inputLabel}>專案名稱</Text>
                 <TextInput style={styles.input} value={editForm.name} onChangeText={t => setEditForm({ ...editForm, name: t })} />
@@ -663,7 +664,7 @@ export default function ProjectDetailScreen() {
                 <TextInput style={styles.input} value={editForm.address} onChangeText={t => setEditForm({ ...editForm, address: t })} />
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1, zIndex: 3000 }}>
+                  <View style={{ flex: 1, zIndex: 5000 }}>
                     <Text style={styles.inputLabel}>工地主任</Text>
                     <TouchableOpacity style={styles.dropdown} onPress={() => setShowManagerPicker(!showManagerPicker)}>
                       <Text style={{ color: editForm.manager ? '#333' : '#999' }} numberOfLines={1}>{editForm.manager || '請選擇'}</Text>
@@ -868,7 +869,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   calContent: { width: 340, backgroundColor: '#fff', padding: 20, borderRadius: 10 },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' },
-  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333333' },
+  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   weekHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   weekText: { width: 40, textAlign: 'center', color: '#999', fontWeight: 'bold', fontSize: 14 },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
