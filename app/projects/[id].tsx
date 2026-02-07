@@ -43,7 +43,9 @@ export default function ProjectDetailScreen() {
   const [activeTab, setActiveTab] = useState('progress');
   const [project, setProject] = useState<any>(null);
   const [projectLogs, setProjectLogs] = useState<any[]>([]);
-  const [chartData, setChartData] = useState<{ labels: string[], actual: (number | null)[] }>({ labels: [], actual: [] });
+  const [chartData, setChartData] = useState<{ labels: string[], actual: (number | null)[], planned: (number | null)[] }>({ labels: [], actual: [], planned: [] });
+  const [plannedPoints, setPlannedPoints] = useState<{ date: string, percentage: number }[]>([]);
+  const [loadingCSV, setLoadingCSV] = useState(false);
 
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
@@ -143,6 +145,60 @@ export default function ProjectDetailScreen() {
     return { calculatedEndDateStr, totalExtensionDays, startTs, endTs };
   }, [project]);
 
+  // --- CSV 預定進度解析 ---
+  const parseCSVProgress = (csvText: string) => {
+    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+    if (lines.length < 2) return [];
+
+    const headers = lines[0].split(',').map(h => h.trim());
+    let dateIdx = 0;
+    let progressIdx = headers.length - 1;
+
+    // 嘗試偵測標題
+    headers.forEach((h, i) => {
+      if (h.includes('日期') || h.toLowerCase().includes('date')) dateIdx = i;
+      if (h.includes('累計') || h.includes('進度') || h.includes('%') || h.toLowerCase().includes('progress')) progressIdx = i;
+    });
+
+    const parsedData = lines.slice(1).map(line => {
+      const cols = line.split(',');
+      const dateStr = cols[dateIdx]?.trim().replace(/\//g, '-');
+      let progStr = cols[progressIdx]?.trim() || '0';
+
+      // 處理百分比: "10.5%" -> 10.5, "0.105" (如果沒%且小於等於1) -> 10.5
+      let percentage = 0;
+      if (progStr.includes('%')) {
+        percentage = parseFloat(progStr.replace('%', ''));
+      } else {
+        const val = parseFloat(progStr);
+        percentage = (val <= 1 && val > 0) ? val * 100 : val;
+      }
+
+      return { date: dateStr, percentage };
+    }).filter(p => p.date && !isNaN(p.percentage));
+
+    return parsedData.sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  useEffect(() => {
+    const loadPlannedData = async () => {
+      if (project?.scheduleFile?.url) {
+        setLoadingCSV(true);
+        try {
+          const response = await fetch(project.scheduleFile.url);
+          const csvText = await response.text();
+          const points = parseCSVProgress(csvText);
+          setPlannedPoints(points);
+        } catch (error) {
+          console.error('Failed to load CSV:', error);
+        } finally {
+          setLoadingCSV(false);
+        }
+      }
+    };
+    loadPlannedData();
+  }, [project?.scheduleFile?.url]);
+
   // 3. S-Curve 計算
   useEffect(() => {
     if (project && calculateDates.startTs > 0 && calculateDates.endTs > 0) {
@@ -167,33 +223,51 @@ export default function ProjectDetailScreen() {
         return `${d.getMonth() + 1}/${d.getDate()}`;
       });
 
-      if (projectLogs.length > 0) {
-        const cleanLogs = projectLogs.map(l => {
-          const dStr = l.date ? String(l.date).replace(/\//g, '-') : '';
-          // 處理百分比字串 "20%" -> 20
-          const valStr = String(l.actualProgress || '0').replace('%', '');
-          return {
-            ts: dStr ? new Date(dStr).getTime() : 0,
-            val: parseFloat(valStr) || 0
-          };
-        }).sort((a, b) => a.ts - b.ts);
+      const cleanLogs = (projectLogs || []).map(l => {
+        const dStr = l.date ? String(l.date).replace(/\//g, '-') : '';
+        const valStr = String(l.actualProgress || '0').replace('%', '');
+        return {
+          ts: dStr ? new Date(dStr).getTime() : 0,
+          val: parseFloat(valStr) || 0
+        };
+      }).sort((a, b) => a.ts - b.ts);
 
-        const mappedData = points.map(pointTs => {
-          // 未來不畫線 (容許一天誤差)
-          if (pointTs > nowTs + 86400000) return null;
+      const mappedActual = points.map(pointTs => {
+        if (pointTs > nowTs + 86400000) return null;
+        const validLogs = cleanLogs.filter(l => l.ts > 0 && l.ts <= pointTs);
+        if (validLogs.length > 0) return validLogs[validLogs.length - 1].val;
+        return 0;
+      });
 
-          const validLogs = cleanLogs.filter(l => l.ts > 0 && l.ts <= pointTs);
-          if (validLogs.length > 0) return validLogs[validLogs.length - 1].val;
-          return 0;
-        });
+      const mappedPlanned = points.map(pointTs => {
+        if (plannedPoints.length === 0) return 0;
+        const cleanPlanned = plannedPoints.map(p => ({
+          ts: new Date(p.date).getTime(),
+          val: p.percentage
+        })).sort((a, b) => a.ts - b.ts);
 
-        const hasData = mappedData.some(d => d !== null);
-        setChartData({ labels: labelsStr, actual: hasData ? mappedData : [0] });
-      } else {
-        setChartData({ labels: labelsStr, actual: [0] });
-      }
+        const pastPoints = cleanPlanned.filter(p => p.ts <= pointTs);
+        if (pastPoints.length > 0) return pastPoints[pastPoints.length - 1].val;
+        return cleanPlanned[0].val || 0;
+      });
+
+      const hasActual = mappedActual.some(d => d !== null);
+      setChartData({
+        labels: labelsStr,
+        actual: hasActual ? mappedActual : [0],
+        planned: mappedPlanned.length > 0 ? mappedPlanned : [0]
+      });
     }
-  }, [project, projectLogs, calculateDates]);
+  }, [project, projectLogs, calculateDates, plannedPoints]);
+
+  const plannedDisplay = useMemo(() => {
+    if (plannedPoints.length === 0) return '0%';
+    const nowTs = new Date().getTime();
+    const sorted = [...plannedPoints].sort((a, b) => a.date.localeCompare(b.date));
+    const past = sorted.filter(p => new Date(p.date).getTime() <= nowTs);
+    if (past.length > 0) return `${past[past.length - 1].percentage}%`;
+    return `${sorted[0].percentage}%`;
+  }, [plannedPoints]);
 
   if (!project) return (
     <View style={styles.center}>
@@ -436,38 +510,45 @@ export default function ProjectDetailScreen() {
           <Text style={styles.sectionTitle}>專案狀態</Text>
           <View style={styles.dashboardRow}>
             <InfoItem label="剩餘工期" value={remainingText} color={remainingColor} />
-            <InfoItem label="預定進度" value="21.5%" subText={`(${todayStr})`} />
+            <InfoItem label="預定進度" value={plannedDisplay} subText={`(${todayStr})`} />
             <InfoItem label="實際進度" value={actualDisplay} subText={`(${todayStr})`} color={actualColor} />
             <InfoItem label="執行狀態" value={getStatusText(project.status)} />
           </View>
 
           <Text style={styles.sectionTitle}>專案進度 S-Curve</Text>
           <View style={styles.chartCard}>
-            <LineChart
-              data={{
-                labels: chartData.labels,
-                datasets: [
-                  { data: chartData.actual as any, color: (opacity = 1) => `rgba(255, 87, 34, ${opacity})`, strokeWidth: 2 },
-                  { data: [0, 10, 25, 45, 65, 85, 100], color: (opacity = 1) => `rgba(65, 105, 225, ${opacity})`, strokeWidth: 2, withDots: false }
-                ],
-                legend: ['實際', '預定']
-              }}
-              width={Dimensions.get("window").width - 40}
-              height={220}
-              chartConfig={{
-                backgroundColor: "#fff",
-                backgroundGradientFrom: "#fff",
-                backgroundGradientTo: "#fff",
-                decimalPlaces: 0,
-                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                propsForDots: { r: "4" }
-              }}
-              bezier
-              style={{ marginVertical: 8, borderRadius: 16 }}
-              withDots={true}
-              getDotColor={(dataPoint, index) => index === 0 ? 'rgba(255, 87, 34, 1)' : 'rgba(255, 87, 34, 1)'}
-            />
+            {loadingCSV ? (
+              <View style={{ height: 220, justifyContent: 'center' }}>
+                <ActivityIndicator color="#002147" />
+                <Text style={{ marginTop: 8, color: '#666' }}>解析進度表中...</Text>
+              </View>
+            ) : (
+              <LineChart
+                data={{
+                  labels: chartData.labels,
+                  datasets: [
+                    { data: chartData.actual as any, color: (opacity = 1) => `rgba(255, 87, 34, ${opacity})`, strokeWidth: 2 },
+                    { data: chartData.planned as any, color: (opacity = 1) => `rgba(65, 105, 225, ${opacity})`, strokeWidth: 2, withDots: false }
+                  ],
+                  legend: ['實際', '預定']
+                }}
+                width={Dimensions.get("window").width - 40}
+                height={220}
+                chartConfig={{
+                  backgroundColor: "#fff",
+                  backgroundGradientFrom: "#fff",
+                  backgroundGradientTo: "#fff",
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  propsForDots: { r: "4" }
+                }}
+                bezier
+                style={{ marginVertical: 8, borderRadius: 16 }}
+                withDots={true}
+                getDotColor={(dataPoint, index) => 'rgba(255, 87, 34, 1)'}
+              />
+            )}
           </View>
 
           <Text style={styles.sectionTitle}>重要日期</Text>
