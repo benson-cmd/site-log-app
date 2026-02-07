@@ -420,6 +420,8 @@ export default function ProjectDetailScreen() {
   };
 
   const handleSaveProject = async () => {
+    console.log("Starting Save Process...");
+    console.log("Current Edit Form Data:", editForm);
     setIsSaving(true);
     try {
       const docRef = doc(db, 'projects', project.id);
@@ -427,35 +429,48 @@ export default function ProjectDetailScreen() {
 
       // 1. 上傳預定進度表 (CSV)
       if (projectData.scheduleFile && projectData.scheduleFile.uri && projectData.scheduleFile.uri.startsWith('blob:')) {
+        console.log("Uploading new CSV to Cloudinary...");
         const uploadedUrl = await uploadToCloudinary(projectData.scheduleFile.uri, projectData.scheduleFile.name);
         projectData.scheduleFile = {
           name: projectData.scheduleFile.name,
           url: uploadedUrl
         };
+        console.log("CSV Uploaded successfully:", uploadedUrl);
       }
 
       // 2. 批次上傳契約文件
       if (projectData.documents && projectData.documents.length > 0) {
-        const uploadNeeded = projectData.documents.filter((d: any) => d.url && d.url.startsWith('blob:'));
-        if (uploadNeeded.length > 0) {
-          const uploadedDocs = await uploadMultipleToCloudinary(
-            uploadNeeded.map((d: any) => ({ uri: d.url, name: d.name }))
-          );
-
-          projectData.documents = projectData.documents.map((d: any) => {
-            const uploaded = uploadedDocs.find((ud: any) => ud.name === d.name);
-            return uploaded ? { ...d, url: uploaded.url } : d;
-          });
-        }
+        console.log("Checking documents for uploads...");
+        const updatedDocs = await Promise.all(projectData.documents.map(async (doc: any) => {
+          if (doc.url && doc.url.startsWith('blob:')) {
+            console.log(`Uploading document: ${doc.name}...`);
+            const uploadedUrl = await uploadToCloudinary(doc.url, doc.name);
+            return { ...doc, url: uploadedUrl };
+          }
+          return doc;
+        }));
+        projectData.documents = updatedDocs;
+        console.log("Documents processed.");
       }
 
-      await updateDoc(docRef, projectData);
-      setProject(projectData);
+      // 3. Data Sanitization (CRITICAL)
+      // Firestore only accepts plain objects/primitives. Remove any raw File or hidden objects.
+      const cleanData = JSON.parse(JSON.stringify(projectData));
+      console.log("Cleaned Data for Firestore:", cleanData);
+
+      // 4. Update Firestore
+      await updateDoc(docRef, cleanData);
+
+      console.log("Firestore Update Success!");
+      setProject(cleanData);
       setIsEditModalVisible(false);
-      Alert.alert("成功", "專案資料已更新");
-    } catch (e) {
-      console.error('更新失敗:', e);
-      Alert.alert("錯誤", "更新失敗，請檢查網路");
+
+      if (Platform.OS === 'web') window.alert("專案資料已成功更新！");
+      else Alert.alert("成功", "專案已更新");
+    } catch (error: any) {
+      console.error("Save Error Detail:", error);
+      if (Platform.OS === 'web') window.alert("儲存失敗: " + error.message);
+      else Alert.alert("錯誤", "更新失敗: " + error.message);
     } finally {
       setIsSaving(false);
     }

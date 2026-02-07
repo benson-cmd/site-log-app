@@ -7,8 +7,8 @@
  */
 
 export const uploadToCloudinary = async (uri: string, fileName: string): Promise<string> => {
-    // If already a https URL, skip upload
-    if (!uri || !uri.startsWith('blob:')) {
+    // If already a remote URL, skip upload
+    if (!uri || uri.startsWith('http')) {
         return uri;
     }
 
