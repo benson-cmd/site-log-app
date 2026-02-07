@@ -3,6 +3,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useMemo } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import { uploadToCloudinary, uploadMultipleToCloudinary } from '../../src/utils/cloudinary';
 import { useLogs, LaborItem, MachineItem } from '../../context/LogContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useUser } from '../../context/UserContext';
@@ -76,8 +77,10 @@ export default function NewLogScreen() {
       });
       if (!result.canceled) {
         setIsUploading(true);
-        const uploadPromises = result.assets.map(asset => uploadPhoto(asset.uri));
-        const urls = await Promise.all(uploadPromises);
+        // Use the new utility for consistency and to ensure cloud name df8uaeazt
+        const uploadNeeded = result.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `photo_${Date.now()}.jpg` }));
+        const uploadedDocs = await uploadMultipleToCloudinary(uploadNeeded);
+        const urls = uploadedDocs.map(d => d.url);
         setFormData(prev => ({ ...prev, photos: [...prev.photos, ...urls] }));
       }
     } catch (error) {

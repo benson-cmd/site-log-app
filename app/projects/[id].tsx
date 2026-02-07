@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { doc, updateDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../src/lib/firebase';
+import { uploadToCloudinary, uploadMultipleToCloudinary } from '../../src/utils/cloudinary';
 
 const STATUS_OPTIONS = ['未開工', '已開工未進場', '施工中', '完工待驗收', '驗收中', '結案'];
 
@@ -44,7 +45,7 @@ export default function ProjectDetailScreen() {
   const [project, setProject] = useState<any>(null);
   const [projectLogs, setProjectLogs] = useState<any[]>([]);
   const [chartData, setChartData] = useState<{ labels: string[], actual: (number | null)[], planned: (number | null)[] }>({ labels: [], actual: [], planned: [] });
-  const [plannedPoints, setPlannedPoints] = useState<{ date: string, percentage: number }[]>([]);
+  const [plannedData, setPlannedData] = useState<{ date: string, value: number }[]>([]);
   const [loadingCSV, setLoadingCSV] = useState(false);
 
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -146,57 +147,53 @@ export default function ProjectDetailScreen() {
   }, [project]);
 
   // --- CSV 預定進度解析 ---
-  const parseCSVProgress = (csvText: string) => {
-    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length < 2) return [];
+  const fetchAndParseCSV = async (url: string) => {
+    setLoadingCSV(true);
+    try {
+      const response = await fetch(url);
+      const csvText = await response.text();
+      const lines = csvText.split(/\r?\n/).filter((line: any) => line.trim() !== '');
+      if (lines.length < 2) return;
 
-    const headers = lines[0].split(',').map(h => h.trim());
-    let dateIdx = 0;
-    let progressIdx = headers.length - 1;
+      const headers = lines[0].split(',').map((h: any) => h.trim());
+      let dateIdx = 0;
+      let progressIdx = headers.length - 1;
 
-    // 嘗試偵測標題
-    headers.forEach((h, i) => {
-      if (h.includes('日期') || h.toLowerCase().includes('date')) dateIdx = i;
-      if (h.includes('累計') || h.includes('進度') || h.includes('%') || h.toLowerCase().includes('progress')) progressIdx = i;
-    });
+      headers.forEach((h: any, i: number) => {
+        const header = h.toLowerCase();
+        if (header.includes('日期') || header.includes('date')) dateIdx = i;
+        if (header.includes('累計') || header.includes('進度') || header.includes('progress') || header.includes('%')) progressIdx = i;
+      });
 
-    const parsedData = lines.slice(1).map(line => {
-      const cols = line.split(',');
-      const dateStr = cols[dateIdx]?.trim().replace(/\//g, '-');
-      let progStr = cols[progressIdx]?.trim() || '0';
+      const parsedData = lines.slice(1).map((line: any) => {
+        const cols = line.split(',');
+        const dateStr = cols[dateIdx]?.trim().replace(/\//g, '-');
+        let progStr = cols[progressIdx]?.trim() || '0';
 
-      // 處理百分比: "10.5%" -> 10.5, "0.105" (如果沒%且小於等於1) -> 10.5
-      let percentage = 0;
-      if (progStr.includes('%')) {
-        percentage = parseFloat(progStr.replace('%', ''));
-      } else {
-        const val = parseFloat(progStr);
-        percentage = (val <= 1 && val > 0) ? val * 100 : val;
-      }
+        let value = 0;
+        if (progStr.includes('%')) {
+          value = parseFloat(progStr.replace('%', ''));
+        } else {
+          const val = parseFloat(progStr);
+          value = (val <= 1 && val > 0 && !progStr.includes('%')) ? val * 100 : val;
+        }
 
-      return { date: dateStr, percentage };
-    }).filter(p => p.date && !isNaN(p.percentage));
+        return { date: dateStr, value };
+      }).filter((p: any) => p.date && !isNaN(p.value));
 
-    return parsedData.sort((a, b) => a.date.localeCompare(b.date));
+      setPlannedData(parsedData.sort((a: any, b: any) => a.date.localeCompare(b.date)));
+    } catch (error) {
+      console.error('CSV parse error:', error);
+      Alert.alert('警告', '無法讀取進度表數據');
+    } finally {
+      setLoadingCSV(false);
+    }
   };
 
   useEffect(() => {
-    const loadPlannedData = async () => {
-      if (project?.scheduleFile?.url) {
-        setLoadingCSV(true);
-        try {
-          const response = await fetch(project.scheduleFile.url);
-          const csvText = await response.text();
-          const points = parseCSVProgress(csvText);
-          setPlannedPoints(points);
-        } catch (error) {
-          console.error('Failed to load CSV:', error);
-        } finally {
-          setLoadingCSV(false);
-        }
-      }
-    };
-    loadPlannedData();
+    if (project?.scheduleFile?.url) {
+      fetchAndParseCSV(project.scheduleFile.url);
+    }
   }, [project?.scheduleFile?.url]);
 
   // 3. S-Curve 計算
@@ -240,13 +237,13 @@ export default function ProjectDetailScreen() {
       });
 
       const mappedPlanned = points.map(pointTs => {
-        if (plannedPoints.length === 0) return 0;
-        const cleanPlanned = plannedPoints.map(p => ({
+        if (plannedData.length === 0) return 0;
+        const cleanPlanned = plannedData.map((p: any) => ({
           ts: new Date(p.date).getTime(),
-          val: p.percentage
-        })).sort((a, b) => a.ts - b.ts);
+          val: p.value
+        })).sort((a: any, b: any) => a.ts - b.ts);
 
-        const pastPoints = cleanPlanned.filter(p => p.ts <= pointTs);
+        const pastPoints = cleanPlanned.filter((p: any) => p.ts <= pointTs);
         if (pastPoints.length > 0) return pastPoints[pastPoints.length - 1].val;
         return cleanPlanned[0].val || 0;
       });
@@ -258,16 +255,16 @@ export default function ProjectDetailScreen() {
         planned: mappedPlanned.length > 0 ? mappedPlanned : [0]
       });
     }
-  }, [project, projectLogs, calculateDates, plannedPoints]);
+  }, [project, projectLogs, calculateDates, plannedData]);
 
   const plannedDisplay = useMemo(() => {
-    if (plannedPoints.length === 0) return '0%';
+    if (plannedData.length === 0) return '0%';
     const nowTs = new Date().getTime();
-    const sorted = [...plannedPoints].sort((a, b) => a.date.localeCompare(b.date));
+    const sorted = [...plannedData].sort((a, b) => a.date.localeCompare(b.date));
     const past = sorted.filter(p => new Date(p.date).getTime() <= nowTs);
-    if (past.length > 0) return `${past[past.length - 1].percentage}%`;
-    return `${sorted[0].percentage}%`;
-  }, [plannedPoints]);
+    if (past.length > 0) return `${past[past.length - 1].value}%`;
+    return `${sorted[0].value}%`;
+  }, [plannedData]);
 
   if (!project) return (
     <View style={styles.center}>
@@ -305,37 +302,19 @@ export default function ProjectDetailScreen() {
 
   const handleOpenDoc = async (doc: any) => {
     const targetUrl = doc.url || doc.uri;
-    console.log("Document Data:", doc);
-
-    if (!targetUrl) {
-      alert("Error: No URL found. Fields: " + Object.keys(doc).join(", "));
-      return;
-    }
-
-    // Diagnostic alert to confirm click is registered
-    alert("Attempting to open: " + targetUrl);
+    if (!targetUrl) return Alert.alert('錯誤', '無效的連結');
 
     try {
       if (Platform.OS === 'web') {
-        // Use hidden anchor tag for better Web compatibility
-        const link = document.createElement('a');
-        link.href = targetUrl;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        window.open(targetUrl, '_blank');
       } else {
         const supported = await Linking.canOpenURL(targetUrl);
-        if (supported) {
-          await Linking.openURL(targetUrl);
-        } else {
-          alert("Cannot open URL on this device: " + targetUrl);
-        }
+        if (supported) await Linking.openURL(targetUrl);
+        else Alert.alert('錯誤', '無法開啟此檔案');
       }
-    } catch (error: any) {
-      console.error("Open Doc Error:", error);
-      alert("Failed to open: " + error.message);
+    } catch (e: any) {
+      console.error('Error opening document:', e);
+      Alert.alert('錯誤', '開啟檔案時發生錯誤');
     }
   };
 
@@ -444,15 +423,30 @@ export default function ProjectDetailScreen() {
     setIsSaving(true);
     try {
       const docRef = doc(db, 'projects', project.id);
-
-      // Sanitize form data before saving (especially scheduleFile)
       const projectData = { ...editForm };
-      if (projectData.scheduleFile) {
+
+      // 1. 上傳預定進度表 (CSV)
+      if (projectData.scheduleFile && projectData.scheduleFile.uri && projectData.scheduleFile.uri.startsWith('blob:')) {
+        const uploadedUrl = await uploadToCloudinary(projectData.scheduleFile.uri, projectData.scheduleFile.name);
         projectData.scheduleFile = {
           name: projectData.scheduleFile.name,
-          uri: projectData.scheduleFile.uri,
-          mimeType: projectData.scheduleFile.mimeType
+          url: uploadedUrl
         };
+      }
+
+      // 2. 批次上傳契約文件
+      if (projectData.documents && projectData.documents.length > 0) {
+        const uploadNeeded = projectData.documents.filter((d: any) => d.url && d.url.startsWith('blob:'));
+        if (uploadNeeded.length > 0) {
+          const uploadedDocs = await uploadMultipleToCloudinary(
+            uploadNeeded.map((d: any) => ({ uri: d.url, name: d.name }))
+          );
+
+          projectData.documents = projectData.documents.map((d: any) => {
+            const uploaded = uploadedDocs.find((ud: any) => ud.name === d.name);
+            return uploaded ? { ...d, url: uploaded.url } : d;
+          });
+        }
       }
 
       await updateDoc(docRef, projectData);

@@ -7,6 +7,7 @@ import { addDoc, collection, getDocs, query, orderBy } from 'firebase/firestore'
 import { db } from '../../src/lib/firebase';
 import { useUser } from '../../context/UserContext';
 import * as DocumentPicker from 'expo-document-picker';
+import { uploadToCloudinary, uploadMultipleToCloudinary } from '../../src/utils/cloudinary';
 
 // --- 全域常數 ---
 const THEME = {
@@ -223,12 +224,30 @@ export default function NewProjectScreen() {
       setIsSubmitting(true);
 
       const projectData = { ...formData };
-      if (projectData.scheduleFile) {
+
+      // 1. 上傳預定進度表 (CSV)
+      if (projectData.scheduleFile && projectData.scheduleFile.uri && projectData.scheduleFile.uri.startsWith('blob:')) {
+        const uploadedUrl = await uploadToCloudinary(projectData.scheduleFile.uri, projectData.scheduleFile.name);
         projectData.scheduleFile = {
           name: projectData.scheduleFile.name,
-          uri: projectData.scheduleFile.uri,
-          mimeType: projectData.scheduleFile.mimeType
+          url: uploadedUrl
         };
+      }
+
+      // 2. 批次上傳契約文件
+      if (projectData.documents && projectData.documents.length > 0) {
+        const uploadNeeded = projectData.documents.filter(d => d.url && d.url.startsWith('blob:'));
+        if (uploadNeeded.length > 0) {
+          const uploadedDocs = await uploadMultipleToCloudinary(
+            uploadNeeded.map(d => ({ uri: d.url, name: d.name }))
+          );
+
+          // 合併已上傳的和原本就在雲端的
+          projectData.documents = projectData.documents.map(d => {
+            const uploaded = uploadedDocs.find((ud: any) => ud.name === d.name);
+            return uploaded ? { ...d, url: uploaded.url } : d;
+          });
+        }
       }
 
       await addDoc(collection(db, 'projects'), {
