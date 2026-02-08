@@ -6,6 +6,7 @@ import { LineChart } from "react-native-chart-kit";
 import { Dimensions } from "react-native";
 import { useProjects } from '../../context/ProjectContext';
 import { useLogs } from '../../context/LogContext';
+import { usePersonnel } from '../../context/PersonnelContext';
 import * as Linking from 'expo-linking';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -52,8 +53,9 @@ export default function ProjectDetailScreen() {
   const [editForm, setEditForm] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Personnel and Dropdown State
-  const [personnelList, setPersonnelList] = useState<any[]>([]);
+  const { personnelList } = usePersonnel();
+
+  // UI & Picker States
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
 
@@ -62,24 +64,7 @@ export default function ProjectDetailScreen() {
   const [currentDateField, setCurrentDateField] = useState('');
   const [displayDate, setDisplayDate] = useState(new Date());
 
-  // 2. 載入人員名單
-  useEffect(() => {
-    const fetchPersonnel = async () => {
-      try {
-        const q = query(collection(db, 'personnel'), orderBy('name', 'asc'));
-        const querySnapshot = await getDocs(q);
-        const list: any[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          if (data.name) list.push({ id: doc.id, name: data.name, role: data.role });
-        });
-        setPersonnelList(list);
-      } catch (error) {
-        console.error('Failed to fetch personnel:', error);
-      }
-    };
-    fetchPersonnel();
-  }, []);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // 3. 載入專案資料
   useEffect(() => {
@@ -212,7 +197,7 @@ export default function ProjectDetailScreen() {
       setPlannedData(parsedData.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()));
     } catch (error) {
       console.error('CSV parse error:', error);
-      Alert.alert('警告', '無法讀取進度表數據');
+      Alert.alert('警告', '無法讀取進度表數據或格式有誤');
     } finally {
       setLoadingCSV(false);
     }
@@ -297,7 +282,7 @@ export default function ProjectDetailScreen() {
 
     const sorted = [...plannedData].sort((a, b) => a.date.localeCompare(b.date));
 
-    // Find the closest record to today (on or before today)
+    // Find the record where its date is closest to today (on or before today is safer for progress)
     let closestRecord = sorted[0];
     for (const p of sorted) {
       const pTs = new Date(p.date.replace(/\//g, '-')).getTime();
@@ -311,20 +296,21 @@ export default function ProjectDetailScreen() {
     return `${closestRecord.value}%`;
   }, [plannedData]);
 
+  const actualDisplay = useMemo(() => {
+    if (projectLogs.length === 0) return '尚未更新';
+    // Use the latest log progress (projectLogs is already sorted by date desc)
+    const latestLog = projectLogs[0];
+    return `${latestLog.actualProgress}%`;
+  }, [projectLogs]);
+
+  const actualColor = projectLogs.length > 0 ? '#333' : '#EF4444';
+
   if (!project) return (
     <View style={styles.center}>
       <ActivityIndicator size="large" color="#002147" />
       <Text style={{ marginTop: 10, color: '#666' }}>專案資料載入中...</Text>
     </View>
   );
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayLog = projectLogs.find(l => {
-    const lDate = l.date ? String(l.date).replace(/\//g, '-') : '';
-    return lDate === todayStr;
-  });
-  const actualDisplay = todayLog ? `${todayLog.actualProgress}%` : '尚未更新';
-  const actualColor = todayLog ? '#333' : '#EF4444';
 
   let remainingDays = 0;
   if (calculateDates.endTs > 0) {
