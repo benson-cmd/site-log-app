@@ -149,38 +149,66 @@ export default function ProjectDetailScreen() {
   // --- CSV 預定進度解析 ---
   const fetchAndParseCSV = async (url: string) => {
     setLoadingCSV(true);
+    console.log("Start fetching CSV from:", url);
     try {
       const response = await fetch(url);
       const csvText = await response.text();
+      console.log("Raw CSV text received (first 100 chars):", csvText.substring(0, 100));
+
+      // Support both \n and \r\n
       const lines = csvText.split(/\r?\n/).filter((line: any) => line.trim() !== '');
-      if (lines.length < 2) return;
+      if (lines.length < 2) {
+        console.log("CSV has too few lines:", lines.length);
+        return;
+      }
 
       const headers = lines[0].split(',').map((h: any) => h.trim());
-      let dateIdx = 0;
-      let progressIdx = headers.length - 1;
+      console.log("CSV Headers detected:", headers);
+
+      let dateIdx = -1;
+      let progressIdx = -1;
 
       headers.forEach((h: any, i: number) => {
         const header = h.toLowerCase();
-        if (header.includes('日期') || header.includes('date')) dateIdx = i;
-        if (header.includes('累計') || header.includes('進度') || header.includes('progress') || header.includes('%')) progressIdx = i;
+        // More robust detection for "Date" or "日期"
+        if (header.includes('日期') || header.includes('date')) {
+          dateIdx = i;
+        }
+        // More robust detection for "Cumulative Progress" or "累計進度" or "進度"
+        if (header.includes('累計') || header.includes('進度') || header.includes('progress') || header.includes('%')) {
+          if (progressIdx === -1 || header.includes('累計') || header.includes('cumulative')) {
+            progressIdx = i;
+          }
+        }
       });
 
-      const parsedData = lines.slice(1).map((line: any) => {
+      // Fallback if not found precisely
+      if (dateIdx === -1) dateIdx = 0;
+      if (progressIdx === -1) progressIdx = headers.length - 1;
+
+      console.log(`Using indices - Date: ${dateIdx}, Progress: ${progressIdx}`);
+
+      const parsedData = lines.slice(1).map((line: any, index: number) => {
         const cols = line.split(',');
         const dateStr = cols[dateIdx]?.trim().replace(/\//g, '-');
         let progStr = cols[progressIdx]?.trim() || '0';
 
         let value = 0;
+        // Strip % and parse
         if (progStr.includes('%')) {
           value = parseFloat(progStr.replace('%', ''));
         } else {
           const val = parseFloat(progStr);
+          // If it's a decimal like 0.215, convert to 21.5
           value = (val <= 1 && val > 0 && !progStr.includes('%')) ? val * 100 : val;
         }
+
+        if (index < 3) console.log(`Parsed Row ${index}: Date=${dateStr}, RawProgress=${progStr}, Value=${value}`);
 
         return { date: dateStr, value };
       }).filter((p: any) => p.date && !isNaN(p.value));
 
+      console.log(`Total parsed points: ${parsedData.length}`);
       setPlannedData(parsedData.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()));
     } catch (error) {
       console.error('CSV parse error:', error);
@@ -263,11 +291,24 @@ export default function ProjectDetailScreen() {
 
   const plannedDisplay = useMemo(() => {
     if (plannedData.length === 0) return '0%';
-    const nowTs = new Date().getTime();
+    const now = new Date();
+    // Reset hours to compare dates accurately
+    const nowTs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
     const sorted = [...plannedData].sort((a, b) => a.date.localeCompare(b.date));
-    const past = sorted.filter(p => new Date(p.date).getTime() <= nowTs);
-    if (past.length > 0) return `${past[past.length - 1].value}%`;
-    return `${sorted[0].value}%`;
+
+    // Find the closest record to today (on or before today)
+    let closestRecord = sorted[0];
+    for (const p of sorted) {
+      const pTs = new Date(p.date.replace(/\//g, '-')).getTime();
+      if (pTs <= nowTs) {
+        closestRecord = p;
+      } else {
+        break;
+      }
+    }
+
+    return `${closestRecord.value}%`;
   }, [plannedData]);
 
   if (!project) return (
@@ -310,7 +351,19 @@ export default function ProjectDetailScreen() {
 
     try {
       if (Platform.OS === 'web') {
-        window.open(targetUrl, '_blank');
+        const isBlob = String(targetUrl).startsWith('blob:');
+        if (isBlob) {
+          // Use hidden anchor to prevent security blocks and handle blobs correctly
+          const link = document.createElement('a');
+          link.href = targetUrl;
+          link.target = '_blank';
+          link.download = doc.name || 'document';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } else {
+          window.open(targetUrl, '_blank');
+        }
       } else {
         const supported = await Linking.canOpenURL(targetUrl);
         if (supported) await Linking.openURL(targetUrl);
@@ -429,7 +482,7 @@ export default function ProjectDetailScreen() {
       const docRef = doc(db, 'projects', project.id);
       const updatedForm = { ...editForm };
 
-      // A. 上傳預定進度表 (CSV)
+      // A. 上傳預定進度表 (CSV) - 僅當是新選擇的 blob: 時
       const scheduleFile = updatedForm.scheduleFile;
       if (scheduleFile && scheduleFile.uri && String(scheduleFile.uri).startsWith('blob:')) {
         console.log("Uploading new CSV to Cloudinary...");
@@ -438,18 +491,23 @@ export default function ProjectDetailScreen() {
           name: scheduleFile.name,
           url: uploadedUrl
         };
+      } else if (scheduleFile && scheduleFile.url && String(scheduleFile.url).startsWith('http')) {
+        // 保留現有 URL，不進行上傳
+        console.log("Preserving existing CSV URL:", scheduleFile.url);
       }
 
       // B. 批次上傳契約文件
       if (updatedForm.documents && updatedForm.documents.length > 0) {
         console.log("Checking documents for uploads...");
         updatedForm.documents = await Promise.all(updatedForm.documents.map(async (docItem: any) => {
+          const itemUrl = docItem.url || docItem.uri;
           // 只有 blob: 才上傳，否則保留原樣
-          if (docItem.url && String(docItem.url).startsWith('blob:')) {
+          if (itemUrl && String(itemUrl).startsWith('blob:')) {
             console.log(`Uploading document: ${docItem.name}...`);
-            const uploadedUrl = await uploadToCloudinary(docItem.url, docItem.name);
+            const uploadedUrl = await uploadToCloudinary(itemUrl, docItem.name);
             return { ...docItem, url: uploadedUrl };
           }
+          console.log(`Keeping existing document URL: ${docItem.name}`);
           return docItem;
         }));
       }
@@ -457,7 +515,7 @@ export default function ProjectDetailScreen() {
       // C. Deep Clean Data (CRITICAL: Firestore Error Fix)
       // 使用 JSON.parse(JSON.stringify()) 徹底移除不可序列化物件
       const sanitizedData = JSON.parse(JSON.stringify(updatedForm));
-      console.log("Sanitized project data:", sanitizedData);
+      console.log("Sanitized project data for Firestore:", sanitizedData);
 
       // D. 更新 Firestore
       await updateDoc(docRef, sanitizedData);
@@ -540,6 +598,7 @@ export default function ProjectDetailScreen() {
                 }}
                 width={Dimensions.get("window").width - 40}
                 height={220}
+                yAxisSuffix="%"
                 chartConfig={{
                   backgroundColor: "#fff",
                   backgroundGradientFrom: "#fff",
@@ -869,7 +928,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   calContent: { width: 340, backgroundColor: '#fff', padding: 20, borderRadius: 10 },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' },
-  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333333' },
   weekHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   weekText: { width: 40, textAlign: 'center', color: '#999', fontWeight: 'bold', fontSize: 14 },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
