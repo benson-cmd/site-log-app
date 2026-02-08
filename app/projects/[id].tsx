@@ -336,20 +336,12 @@ export default function ProjectDetailScreen() {
     if (!targetUrl) return Alert.alert('錯誤', '無效的連結');
 
     try {
+      if (String(targetUrl).startsWith('blob:')) {
+        return Alert.alert('提示', '檔案尚未上傳，請先儲存專案以完成上傳。');
+      }
+
       if (Platform.OS === 'web') {
-        const isBlob = String(targetUrl).startsWith('blob:');
-        if (isBlob) {
-          // Use hidden anchor to prevent security blocks and handle blobs correctly
-          const link = document.createElement('a');
-          link.href = targetUrl;
-          link.target = '_blank';
-          link.download = doc.name || 'document';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } else {
-          window.open(targetUrl, '_blank');
-        }
+        window.open(targetUrl, '_blank');
       } else {
         const supported = await Linking.canOpenURL(targetUrl);
         if (supported) await Linking.openURL(targetUrl);
@@ -701,15 +693,15 @@ export default function ProjectDetailScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
             <ScrollView style={{ padding: 20, paddingBottom: 50 }}>
 
-              <View style={{ zIndex: 5000 }}>
+              <View style={{ zIndex: 10000 }}>
                 <Text style={styles.groupTitle}>基本資訊</Text>
                 <Text style={styles.inputLabel}>專案名稱</Text>
                 <TextInput style={styles.input} value={editForm.name} onChangeText={t => setEditForm({ ...editForm, name: t })} />
                 <Text style={styles.inputLabel}>專案地點</Text>
                 <TextInput style={styles.input} value={editForm.address} onChangeText={t => setEditForm({ ...editForm, address: t })} />
 
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1, zIndex: 5000 }}>
+                <View style={{ flexDirection: 'row', gap: 10, zIndex: 11000 }}>
+                  <View style={{ flex: 1, zIndex: 12000 }}>
                     <Text style={styles.inputLabel}>工地主任</Text>
                     <TouchableOpacity style={styles.dropdown} onPress={() => setShowManagerPicker(!showManagerPicker)}>
                       <Text style={{ color: editForm.manager ? '#333' : '#999' }} numberOfLines={1}>{editForm.manager || '請選擇'}</Text>
@@ -725,7 +717,7 @@ export default function ProjectDetailScreen() {
                       </View>
                     )}
                   </View>
-                  <View style={{ flex: 1, zIndex: 2000 }}>
+                  <View style={{ flex: 1, zIndex: 10000 }}>
                     <Text style={styles.inputLabel}>執行狀態</Text>
                     <TouchableOpacity style={styles.dropdown} onPress={() => setShowStatusPicker(!showStatusPicker)}>
                       <Text style={{ color: '#333' }}>{editForm.executionStatus || editForm.status || '未開工'}</Text>
